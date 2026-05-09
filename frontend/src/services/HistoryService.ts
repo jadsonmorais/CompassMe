@@ -36,6 +36,14 @@ export interface HistoryFilter {
   limit?: number;
 }
 
+export interface ChartPoint {
+  date: string;
+  progressPercentage: number;
+  completedCount: number;
+  totalActivities: number;
+  hasData: boolean;
+}
+
 function authHeaders(): HeadersInit {
   const token = getAccessToken();
   return {
@@ -59,4 +67,17 @@ export async function getHistory(filter: HistoryFilter = {}): Promise<HistoryRes
     throw new Error(d.error ?? `HTTP ${res.status}`);
   }
   return res.json() as Promise<HistoryResult>;
+}
+
+export async function getChartData(from: string, to: string): Promise<ChartPoint[]> {
+  const url = new URL(`${API}/history/chart`);
+  url.searchParams.set("from", from);
+  url.searchParams.set("to", to);
+  const res = await fetch(url.toString(), { headers: authHeaders() });
+  if (!res.ok) {
+    const d = await res.json() as { error?: string };
+    throw new Error(d.error ?? `HTTP ${res.status}`);
+  }
+  const data = await res.json() as { points: ChartPoint[] };
+  return data.points;
 }

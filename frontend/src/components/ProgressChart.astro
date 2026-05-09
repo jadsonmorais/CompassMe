@@ -30,8 +30,8 @@
 </section>
 
 <script>
-  import { getHistory } from "../services/HistoryService.ts";
-  import type { HistoryEntry } from "../services/HistoryService.ts";
+  import { getChartData } from "../services/HistoryService.ts";
+  import type { ChartPoint } from "../services/HistoryService.ts";
 
   const chartLoading = document.getElementById("chart-loading") as HTMLDivElement;
   const chartWrapper = document.getElementById("chart-wrapper") as HTMLDivElement;
@@ -47,19 +47,8 @@
   const PAD = { top: 20, right: 16, bottom: 36, left: 40 };
   const H   = 200;
 
-  let entries: HistoryEntry[] = [];
+  let points: ChartPoint[] = [];
   let activeDays = 14;
-
-  const statusLabel: Record<string, string> = {
-    completed: "✓",
-    pending: "○",
-    skipped: "–",
-  };
-  const statusColor: Record<string, string> = {
-    completed: "#22c55e",
-    pending: "#94a3b8",
-    skipped: "#f59e0b",
-  };
 
   async function load(days: number): Promise<void> {
     chartLoading.classList.remove("hidden");
@@ -71,13 +60,11 @@
     from.setDate(today.getDate() - days + 1);
 
     try {
-      const result = await getHistory({
-        from: from.toISOString().slice(0, 10),
-        to: today.toISOString().slice(0, 10),
-        limit: days,
-        offset: 0,
-      });
-      entries = result.entries;
+      const result = await getChartData(
+        from.toISOString().slice(0, 10),
+        today.toISOString().slice(0, 10)
+      );
+      points = result;
       chartLoading.classList.add("hidden");
       chartWrapper.classList.remove("hidden");
       drawChart(days);
@@ -93,7 +80,9 @@
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
     svg.innerHTML = "";
 
-    // Gera todos os dias do período (inclui dias sem dados)
+    const pointMap = new Map(points.map((p) => [p.date, p]));
+
+    // Gera todos os dias do período
     const today = new Date();
     const allDays: string[] = [];
     for (let i = days - 1; i >= 0; i--) {
@@ -102,7 +91,6 @@
       allDays.push(d.toISOString().slice(0, 10));
     }
 
-    const entryMap = new Map(entries.map((e) => [e.date, e]));
     const innerW = W - PAD.left - PAD.right;
     const innerH = H - PAD.top - PAD.bottom;
     const xStep  = innerW / Math.max(allDays.length - 1, 1);
@@ -131,14 +119,14 @@
       svg.appendChild(label);
     });
 
-    // Linha de progresso (apenas dias com dados)
+    // Linha de progresso (apenas dias com atividades)
     const dataPoints = allDays
       .map((date, i) => {
-        const e = entryMap.get(date);
-        if (!e) return null;
-        return { x: PAD.left + i * xStep, y: PAD.top + innerH - (e.progressPercentage / 100) * innerH, entry: e };
+        const p = pointMap.get(date);
+        if (!p?.hasData) return null;
+        return { x: PAD.left + i * xStep, y: PAD.top + innerH - (p.progressPercentage / 100) * innerH, point: p };
       })
-      .filter(Boolean) as { x: number; y: number; entry: HistoryEntry }[];
+      .filter(Boolean) as { x: number; y: number; point: ChartPoint }[];
 
     if (dataPoints.length >= 2) {
       // Área preenchida
@@ -165,7 +153,6 @@
     // Pontos + labels de data
     allDays.forEach((date, i) => {
       const x = PAD.left + i * xStep;
-      const entry = entryMap.get(date);
 
       // Label de data (a cada N dias para não sobrepor)
       const labelEvery = days <= 14 ? 1 : days <= 30 ? 3 : 7;
@@ -181,11 +168,12 @@
         svg.appendChild(lbl);
       }
 
-      if (!entry) return;
+      const pt = pointMap.get(date);
+      if (!pt?.hasData) return;
 
-      const y = PAD.top + innerH - (entry.progressPercentage / 100) * innerH;
-      const color = entry.progressPercentage >= 100 ? "#22c55e"
-        : entry.progressPercentage >= 50 ? "#38bdf8"
+      const y = PAD.top + innerH - (pt.progressPercentage / 100) * innerH;
+      const color = pt.progressPercentage >= 100 ? "#22c55e"
+        : pt.progressPercentage >= 50 ? "#38bdf8"
         : "#f59e0b";
 
       // Ponto clicável
@@ -199,29 +187,18 @@
       circle.setAttribute("cursor", "pointer");
       circle.setAttribute("tabindex", "0");
       circle.setAttribute("role", "button");
-      circle.setAttribute("aria-label", `${date}: ${entry.progressPercentage.toFixed(1)}%`);
+      circle.setAttribute("aria-label", `${date}: ${pt.progressPercentage.toFixed(1)}%`);
 
       const showDetail = (): void => {
         const d = new Date(date + "T12:00:00");
         detailDate.textContent = d.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
-        detailPct.textContent  = `${entry.progressPercentage.toFixed(1)}%`;
+        detailPct.textContent  = `${pt.progressPercentage.toFixed(1)}% · ${pt.completedCount}/${pt.totalActivities} atividades`;
         detailPct.style.color  = color;
-
-        if (entry.activities.length === 0) {
-          detailList.innerHTML = "";
-          detailEmpty.classList.remove("hidden");
-        } else {
-          detailEmpty.classList.add("hidden");
-          detailList.innerHTML = entry.activities.map((a) => `
-            <li class="detail-item">
-              <span class="detail-status" style="color:${statusColor[a.status]}">${statusLabel[a.status]}</span>
-              <span class="detail-title">${a.title}</span>
-              <span class="detail-type">${a.type === "ROUTINE" ? "Rotina" : a.type === "ONE_TIME" ? "Única" : "Opcional"}</span>
-            </li>`).join("");
-        }
+        detailList.innerHTML   = "";
+        detailEmpty.classList.remove("hidden");
+        detailEmpty.textContent = "Clique nos pontos para ver detalhes. Os detalhes completos estão no Histórico abaixo.";
 
         dayDetail.classList.remove("hidden");
-        dayDetail.scrollIntoView({ behavior: "smooth", block: "nearest" });
       };
 
       circle.addEventListener("click", showDetail);
@@ -245,7 +222,7 @@
   let resizeTimer: ReturnType<typeof setTimeout>;
   window.addEventListener("resize", () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => { if (entries.length) drawChart(activeDays); }, 200);
+    resizeTimer = setTimeout(() => { if (points.length) drawChart(activeDays); }, 200);
   });
 
   load(activeDays);

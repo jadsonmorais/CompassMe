@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { GetHistoryUseCase } from "../../../application/use-cases/GetHistoryUseCase.js";
+import { GetChartDataUseCase } from "../../../application/use-cases/GetChartDataUseCase.js";
 import type { IActivityRepository } from "../../../ports/IActivityRepository.js";
 import type { ICompletionRepository } from "../../../ports/ICompletionRepository.js";
 import type { IProgressRepository } from "../../../ports/IProgressRepository.js";
@@ -51,6 +52,25 @@ export function createHistoryRouter(
       });
 
       res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /history/chart — calcula progresso por dia direto das atividades+completions
+  router.get("/chart", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = (req as AuthenticatedRequest).userId;
+      const today = new Date();
+      const fourteenAgo = new Date(today);
+      fourteenAgo.setDate(today.getDate() - 13);
+
+      const from = req.query.from ? new Date(req.query.from as string) : fourteenAgo;
+      const to   = req.query.to   ? new Date(req.query.to as string)   : today;
+
+      const useCase = new GetChartDataUseCase(activityRepo, completionRepo);
+      const points  = await useCase.execute(userId, from, to);
+      res.json({ points });
     } catch (err) {
       next(err);
     }
