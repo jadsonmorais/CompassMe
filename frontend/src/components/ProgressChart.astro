@@ -1,0 +1,307 @@
+---
+// ProgressChart — gráfico de linha do progresso diário (SVG puro, sem libs)
+---
+<section id="chart-section">
+  <div class="chart-header">
+    <h2>Progresso por Dia</h2>
+    <div class="range-btns" role="group" aria-label="Período">
+      <button class="range-btn active" data-days="14">14d</button>
+      <button class="range-btn" data-days="30">30d</button>
+      <button class="range-btn" data-days="60">60d</button>
+    </div>
+  </div>
+
+  <div id="chart-loading" class="state-msg">Carregando…</div>
+
+  <div id="chart-wrapper" class="hidden">
+    <svg id="progress-svg" role="img" aria-label="Gráfico de progresso diário"></svg>
+  </div>
+
+  <!-- Detalhe do dia selecionado -->
+  <div id="day-detail" class="hidden">
+    <div class="detail-header">
+      <span id="detail-date"></span>
+      <span id="detail-pct" class="detail-pct"></span>
+      <button id="detail-close" aria-label="Fechar">✕</button>
+    </div>
+    <ul id="detail-activities" class="detail-list"></ul>
+    <p id="detail-empty" class="state-msg hidden">Sem atividades registradas neste dia.</p>
+  </div>
+</section>
+
+<script>
+  import { getHistory } from "../services/HistoryService.ts";
+  import type { HistoryEntry } from "../services/HistoryService.ts";
+
+  const chartLoading = document.getElementById("chart-loading") as HTMLDivElement;
+  const chartWrapper = document.getElementById("chart-wrapper") as HTMLDivElement;
+  const svg          = document.getElementById("progress-svg") as unknown as SVGSVGElement;
+  const dayDetail    = document.getElementById("day-detail") as HTMLDivElement;
+  const detailDate   = document.getElementById("detail-date") as HTMLSpanElement;
+  const detailPct    = document.getElementById("detail-pct") as HTMLSpanElement;
+  const detailList   = document.getElementById("detail-activities") as HTMLUListElement;
+  const detailEmpty  = document.getElementById("detail-empty") as HTMLParagraphElement;
+  const detailClose  = document.getElementById("detail-close") as HTMLButtonElement;
+  const rangeBtns    = document.querySelectorAll<HTMLButtonElement>(".range-btn");
+
+  const PAD = { top: 20, right: 16, bottom: 36, left: 40 };
+  const H   = 200;
+
+  let entries: HistoryEntry[] = [];
+  let activeDays = 14;
+
+  const statusLabel: Record<string, string> = {
+    completed: "✓",
+    pending: "○",
+    skipped: "–",
+  };
+  const statusColor: Record<string, string> = {
+    completed: "#22c55e",
+    pending: "#94a3b8",
+    skipped: "#f59e0b",
+  };
+
+  async function load(days: number): Promise<void> {
+    chartLoading.classList.remove("hidden");
+    chartWrapper.classList.add("hidden");
+    dayDetail.classList.add("hidden");
+
+    const today = new Date();
+    const from  = new Date(today);
+    from.setDate(today.getDate() - days + 1);
+
+    try {
+      const result = await getHistory({
+        from: from.toISOString().slice(0, 10),
+        to: today.toISOString().slice(0, 10),
+        limit: days,
+        offset: 0,
+      });
+      entries = result.entries;
+      chartLoading.classList.add("hidden");
+      chartWrapper.classList.remove("hidden");
+      drawChart(days);
+    } catch (err) {
+      chartLoading.textContent = `Erro: ${(err as Error).message}`;
+    }
+  }
+
+  function drawChart(days: number): void {
+    const W = svg.parentElement!.clientWidth || 600;
+    svg.setAttribute("width", String(W));
+    svg.setAttribute("height", String(H));
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.innerHTML = "";
+
+    // Gera todos os dias do período (inclui dias sem dados)
+    const today = new Date();
+    const allDays: string[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      allDays.push(d.toISOString().slice(0, 10));
+    }
+
+    const entryMap = new Map(entries.map((e) => [e.date, e]));
+    const innerW = W - PAD.left - PAD.right;
+    const innerH = H - PAD.top - PAD.bottom;
+    const xStep  = innerW / Math.max(allDays.length - 1, 1);
+
+    const ns = "http://www.w3.org/2000/svg";
+
+    // Grade horizontal
+    [0, 25, 50, 75, 100].forEach((v) => {
+      const y = PAD.top + innerH - (v / 100) * innerH;
+      const line = document.createElementNS(ns, "line");
+      line.setAttribute("x1", String(PAD.left));
+      line.setAttribute("x2", String(PAD.left + innerW));
+      line.setAttribute("y1", String(y));
+      line.setAttribute("y2", String(y));
+      line.setAttribute("stroke", v === 0 ? "#475569" : "#1e293b");
+      line.setAttribute("stroke-width", "1");
+      svg.appendChild(line);
+
+      const label = document.createElementNS(ns, "text");
+      label.setAttribute("x", String(PAD.left - 6));
+      label.setAttribute("y", String(y + 4));
+      label.setAttribute("text-anchor", "end");
+      label.setAttribute("fill", "#64748b");
+      label.setAttribute("font-size", "10");
+      label.textContent = `${v}%`;
+      svg.appendChild(label);
+    });
+
+    // Linha de progresso (apenas dias com dados)
+    const dataPoints = allDays
+      .map((date, i) => {
+        const e = entryMap.get(date);
+        if (!e) return null;
+        return { x: PAD.left + i * xStep, y: PAD.top + innerH - (e.progressPercentage / 100) * innerH, entry: e };
+      })
+      .filter(Boolean) as { x: number; y: number; entry: HistoryEntry }[];
+
+    if (dataPoints.length >= 2) {
+      // Área preenchida
+      let areaPath = `M ${dataPoints[0].x} ${PAD.top + innerH}`;
+      dataPoints.forEach((p) => { areaPath += ` L ${p.x} ${p.y}`; });
+      areaPath += ` L ${dataPoints[dataPoints.length - 1].x} ${PAD.top + innerH} Z`;
+      const area = document.createElementNS(ns, "path");
+      area.setAttribute("d", areaPath);
+      area.setAttribute("fill", "rgba(56,189,248,0.08)");
+      svg.appendChild(area);
+
+      // Linha
+      let linePath = `M ${dataPoints[0].x} ${dataPoints[0].y}`;
+      dataPoints.slice(1).forEach((p) => { linePath += ` L ${p.x} ${p.y}`; });
+      const line = document.createElementNS(ns, "path");
+      line.setAttribute("d", linePath);
+      line.setAttribute("stroke", "#38bdf8");
+      line.setAttribute("stroke-width", "2");
+      line.setAttribute("fill", "none");
+      line.setAttribute("stroke-linejoin", "round");
+      svg.appendChild(line);
+    }
+
+    // Pontos + labels de data
+    allDays.forEach((date, i) => {
+      const x = PAD.left + i * xStep;
+      const entry = entryMap.get(date);
+
+      // Label de data (a cada N dias para não sobrepor)
+      const labelEvery = days <= 14 ? 1 : days <= 30 ? 3 : 7;
+      if (i % labelEvery === 0 || i === allDays.length - 1) {
+        const d = new Date(date + "T12:00:00");
+        const lbl = document.createElementNS(ns, "text");
+        lbl.setAttribute("x", String(x));
+        lbl.setAttribute("y", String(H - 6));
+        lbl.setAttribute("text-anchor", "middle");
+        lbl.setAttribute("fill", "#64748b");
+        lbl.setAttribute("font-size", "10");
+        lbl.textContent = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+        svg.appendChild(lbl);
+      }
+
+      if (!entry) return;
+
+      const y = PAD.top + innerH - (entry.progressPercentage / 100) * innerH;
+      const color = entry.progressPercentage >= 100 ? "#22c55e"
+        : entry.progressPercentage >= 50 ? "#38bdf8"
+        : "#f59e0b";
+
+      // Ponto clicável
+      const circle = document.createElementNS(ns, "circle");
+      circle.setAttribute("cx", String(x));
+      circle.setAttribute("cy", String(y));
+      circle.setAttribute("r", "5");
+      circle.setAttribute("fill", color);
+      circle.setAttribute("stroke", "#0f172a");
+      circle.setAttribute("stroke-width", "2");
+      circle.setAttribute("cursor", "pointer");
+      circle.setAttribute("tabindex", "0");
+      circle.setAttribute("role", "button");
+      circle.setAttribute("aria-label", `${date}: ${entry.progressPercentage.toFixed(1)}%`);
+
+      const showDetail = (): void => {
+        const d = new Date(date + "T12:00:00");
+        detailDate.textContent = d.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+        detailPct.textContent  = `${entry.progressPercentage.toFixed(1)}%`;
+        detailPct.style.color  = color;
+
+        if (entry.activities.length === 0) {
+          detailList.innerHTML = "";
+          detailEmpty.classList.remove("hidden");
+        } else {
+          detailEmpty.classList.add("hidden");
+          detailList.innerHTML = entry.activities.map((a) => `
+            <li class="detail-item">
+              <span class="detail-status" style="color:${statusColor[a.status]}">${statusLabel[a.status]}</span>
+              <span class="detail-title">${a.title}</span>
+              <span class="detail-type">${a.type === "ROUTINE" ? "Rotina" : a.type === "ONE_TIME" ? "Única" : "Opcional"}</span>
+            </li>`).join("");
+        }
+
+        dayDetail.classList.remove("hidden");
+        dayDetail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      };
+
+      circle.addEventListener("click", showDetail);
+      circle.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") showDetail(); });
+      svg.appendChild(circle);
+    });
+  }
+
+  detailClose.addEventListener("click", () => dayDetail.classList.add("hidden"));
+
+  rangeBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      rangeBtns.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeDays = parseInt(btn.dataset.days!);
+      load(activeDays);
+    });
+  });
+
+  // Redesenha ao redimensionar
+  let resizeTimer: ReturnType<typeof setTimeout>;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (entries.length) drawChart(activeDays); }, 200);
+  });
+
+  load(activeDays);
+</script>
+
+<style>
+  #chart-section { max-width: 720px; margin: 0 auto; padding: 1.5rem 1rem 0; }
+
+  .chart-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;
+  }
+  h2 { font-size: 1.25rem; }
+
+  .range-btns { display: flex; gap: 0.375rem; }
+  .range-btn {
+    padding: 0.25rem 0.625rem; min-height: unset; min-width: unset;
+    background: #1e293b; border: 1px solid #334155;
+    border-radius: 0.375rem; color: #94a3b8;
+    cursor: pointer; font-size: 0.8125rem;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .range-btn.active { border-color: var(--color-accent); color: var(--color-accent); }
+
+  .state-msg { color: #64748b; padding: 1rem 0; font-size: 0.9375rem; }
+  .hidden { display: none !important; }
+
+  #chart-wrapper {
+    background: var(--color-surface);
+    border: 1px solid #334155;
+    border-radius: 0.75rem;
+    padding: 0.75rem 0.5rem 0.25rem;
+    overflow: hidden;
+  }
+  #progress-svg { display: block; width: 100%; }
+
+  /* Detalhe do dia */
+  #day-detail {
+    margin-top: 0.75rem;
+    background: var(--color-surface);
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    padding: 1rem;
+  }
+  .detail-header {
+    display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem;
+  }
+  #detail-date { font-size: 0.9375rem; font-weight: 500; flex: 1; }
+  .detail-pct { font-size: 1.125rem; font-weight: 700; }
+  #detail-close {
+    background: transparent; border: none; color: #64748b;
+    cursor: pointer; font-size: 1rem; padding: 0.25rem;
+    min-height: unset; min-width: unset; line-height: 1;
+  }
+  .detail-list { list-style: none; display: flex; flex-direction: column; gap: 0.375rem; }
+  .detail-item { display: flex; align-items: center; gap: 0.625rem; font-size: 0.875rem; }
+  .detail-status { font-weight: 700; width: 1rem; text-align: center; flex-shrink: 0; }
+  .detail-title { flex: 1; }
+  .detail-type { font-size: 0.75rem; color: #64748b; }
+</style>
