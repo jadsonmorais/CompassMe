@@ -1,254 +1,179 @@
-# 🧭 CompassMe
+# CompassMe
 
-A compassionate daily activity tracker for productivity and wellness. Track your daily progress with a weight system that recognizes difficult days, earn aura through consistent effort, and visualize your goals across daily, weekly, and monthly timescales.
+Rastreador de atividades diárias com sistema de progresso, Aura e metas multi-temporais.
 
-**Status**: Phase 0 ✅ Completed — Phase 1 🟡 Authorized  
-**Updated**: May 9, 2026
-
----
-
-## 📋 Documentation
-
-- **Specification**: [SPEC-001](specify/SPEC.md) – Requirements and feature set
-- **Technical Plan**: [PLAN-001](specify/PLAN-001.md) – Architecture, design decisions, and technical details
-- **Implementation Tasks**: [TASKS-001](specify/TASKS-001.md) – Decomposed tasks for 4 implementation sprints
-- **Approval Status**: [APPROVAL.md](APPROVAL.md) – Executive summary and authorization ledger
-- **C4 Diagrams**: 
-  - [System Context](specify/c4/01-Context.md)
-  - [Container Architecture](specify/c4/02-Container.md)
+**Produção**: [compass-me.vercel.app](https://compass-me.vercel.app)  
+**API**: [compassme-production.up.railway.app](https://compassme-production.up.railway.app/health)  
+**Status**: MVP completo — todas as 24 tasks concluídas
 
 ---
 
-## 🚀 Implementation Progress
+## Stack
 
-### Phase 0: Foundation ✅ COMPLETED
-
-| Task | Description | Status |
-|------|-------------|--------|
-| T-001 | Project scaffold (Astro + Express) | ✅ |
-| T-002 | PostgreSQL schema & migrations | ✅ |
-| T-003 | JWT & auth providers | ✅ |
-| T-004 | Frontend layout & routing | ✅ |
-| T-005 | Nano Stores state management | ✅ |
-
-**Verification**: `npm run lint` passes (0 TypeScript errors) on both frontend and backend.
-
-### Phase 1: Auth & Activities 🟡 IN PROGRESS
-
-| Task | Description | Status |
-|------|-------------|--------|
-| T-006 | Backend auth endpoints | ⬜ |
-| T-007 | Frontend auth UI | ⬜ |
-| T-008 | Activity CRUD backend | ⬜ |
-| T-009 | Activity UI frontend | ⬜ |
-| T-010 | Activity completion tracking | ⬜ |
+| Camada | Tech |
+|--------|------|
+| Frontend | Astro 4.x + TypeScript 5 |
+| Backend | Express.js + Node.js 20 |
+| Banco | PostgreSQL 16 |
+| Auth | JWT (access 15min + refresh 7d) |
+| CI/CD | GitHub Actions |
+| Deploy | Vercel (frontend) + Railway (backend + DB) |
 
 ---
 
-## 🎯 Quick Start
+## Funcionalidades
 
-### Prerequisites
-- Node.js 18+
-- PostgreSQL 15+
-- Redis (optional for Phase 1+)
+- **Autenticação** — registro, login, logout, refresh token
+- **Atividades** — ROUTINE (diária/semanal por dias/mensal), ONE_TIME (com data), OPTIONAL
+- **Recorrência semanal** — seleção de dias da semana individuais
+- **Toggle de conclusão** — marca/desmarca por dia
+- **Progresso diário** — barra 0–100%, OPTIONAL excluída do denominador
+- **Aura** — +5 (100%), +2 (parcial), -1 (0%); multiplicador amplifica ganhos
+- **Multiplicador diário** — 1×, 1.5×, 2× para dias difíceis
+- **Metas** — diária (80%), semanal (75%), mensal (70%) — editáveis
+- **Histórico** — filtros por data, tipo, status; paginação
+- **Navbar responsiva** — hamburger menu no mobile
 
-### Development
+---
+
+## Desenvolvimento local
+
+### Pré-requisitos
+- Docker e Docker Compose
+
+### Subir tudo
 
 ```bash
-# Clone & install
-git clone <repo> && cd CompassMe
+git clone https://github.com/jadsonmorais/CompassMe.git
+cd CompassMe
+docker compose up --build
+```
+
+- Frontend: http://localhost:3000
+- Backend: http://localhost:3002/health
+- Banco: localhost:5432
+
+### Sem Docker
+
+```bash
+# Backend
+cd backend
+cp env.example .env        # edite DATABASE_URL e JWT_SECRET
 npm install
+npm run dev                # http://localhost:3001
 
-# Setup environment
-cp .env.example .env
-# Edit .env with your database credentials
-
-# Run migrations
-npm run migrate
-
-# Start both frontend + backend
-npm run dev              # Astro on localhost:3000
-# In another terminal:
-npm run dev:server       # Express on localhost:3001
+# Frontend (outro terminal)
+cd frontend
+cp env.example .env        # edite PUBLIC_API_URL=http://localhost:3001
+npm install
+npm run dev                # http://localhost:3000
 ```
 
-### Testing
+### Migrations
+
 ```bash
-npm run test             # Run all tests
-npm run test:coverage    # Coverage report
+# Com Docker (automático ao subir)
+docker compose up --build
+
+# Manual (psql)
+psql $DATABASE_URL -f backend/src/infrastructure/database/migrations/001-init.sql
+psql $DATABASE_URL -f backend/src/infrastructure/database/migrations/002-add-user-multiplier.sql
+psql $DATABASE_URL -f backend/src/infrastructure/database/migrations/003-goals-unique-constraint.sql
 ```
 
-### Building
+---
+
+## Testes
+
 ```bash
-npm run build            # Build both frontend + backend
-npm run build:frontend
-npm run build:backend
+cd backend
+npm test
+# 15 testes — ProgressCalculator (8) + AuraCalculator (7)
 ```
 
-## 🏗️ Project Structure
+---
+
+## Deploy
+
+### Variáveis de ambiente
+
+**Railway (backend)**:
+```
+NODE_ENV=production
+JWT_SECRET=<string aleatória de 32+ chars>
+CORS_ORIGIN=https://compass-me.vercel.app
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+```
+
+**Vercel (frontend)**:
+```
+PUBLIC_API_URL=https://compassme-production.up.railway.app
+```
+
+### Migrations em produção
+
+Execute no painel **Database → Query** do Railway (ou via psql com a URL pública):
+
+```sql
+-- Cole o conteúdo de 001-init.sql, depois 002 e 003
+```
+
+---
+
+## Estrutura
 
 ```
 CompassMe/
-├── specify/
-│   ├── SPEC.md              # Feature specification
-│   ├── PLAN-001.md          # Technical plan
-│   ├── TASKS-001.md         # Implementation tasks
-│   ├── APPROVAL.md          # Authorization ledger
-│   └── c4/
-│       ├── 01-Context.md    # System context
-│       └── 02-Container.md  # Architecture
-├── frontend/                # Astro 4.x SPA
+├── .github/workflows/ci.yml   # CI: type-check + tests + build
+├── docker-compose.yml          # Ambiente local completo
+├── backend/
+│   ├── Dockerfile
 │   ├── src/
-│   │   ├── components/      # Astro islands (empty — Phase 1)
-│   │   ├── services/        # Port definitions (empty — Phase 1)
-│   │   ├── stores/          # Nano Stores ✅
-│   │   │   ├── userStore.ts
-│   │   │   ├── activityStore.ts
-│   │   │   └── progressStore.ts
-│   │   ├── pages/           # Routes ✅
-│   │   │   ├── index.astro
-│   │   │   ├── activities.astro
-│   │   │   ├── history.astro
-│   │   │   └── settings.astro
-│   │   └── layout/
-│   │       └── Layout.astro # Base layout ✅
-│   └── astro.config.mjs
-├── backend/                 # Express.js API
-│   ├── src/
-│   │   ├── domain/          # Entities ✅
-│   │   │   ├── entities/
-│   │   │   │   ├── User.ts
-│   │   │   │   ├── Activity.ts
-│   │   │   │   ├── ActivityCompletion.ts
-│   │   │   │   ├── DailyProgress.ts
-│   │   │   │   └── AuraHistory.ts
-│   │   ├── application/     # Services, DTOs (Phase 1)
-│   │   ├── infrastructure/  # DB, HTTP, Auth ✅
+│   │   ├── app.ts                      # Express + DI
+│   │   ├── domain/entities/            # User, Activity, Goal...
+│   │   ├── application/
+│   │   │   ├── services/               # ProgressCalculator, AuraCalculator
+│   │   │   └── use-cases/              # Login, Register, GetHistory...
+│   │   ├── infrastructure/
 │   │   │   ├── database/
-│   │   │   │   ├── connection.ts
-│   │   │   │   ├── migrations/001-init.sql
-│   │   │   │   └── repositories/
-│   │   │   │       ├── PgUserRepository.ts
-│   │   │   │       └── PgActivityRepository.ts
-│   │   │   ├── auth/
-│   │   │   │   ├── JwtProvider.ts
-│   │   │   │   └── HashProvider.ts
-│   │   │   └── http/        # Routes, middleware (Phase 1)
-│   │   ├── ports/           # Interfaces ✅
-│   │   │   ├── IUserRepository.ts
-│   │   │   ├── IActivityRepository.ts
-│   │   │   ├── IJwtProvider.ts
-│   │   │   └── IHashProvider.ts
-│   │   ├── app.ts           # Express setup ✅
-│   │   └── server.ts        # Entry point ✅
-│   └── package.json
-└── README.md (this file)
+│   │   │   │   ├── migrations/         # 001, 002, 003
+│   │   │   │   └── repositories/       # PgUser, PgActivity...
+│   │   │   ├── http/
+│   │   │   │   ├── routes/             # auth, activities, progress...
+│   │   │   │   └── middleware/         # authMiddleware, rateLimit...
+│   │   │   └── auth/                   # JwtProvider, HashProvider
+│   │   └── ports/                      # Interfaces (IUserRepository...)
+│   └── tests/unit/                     # 15 unit tests
+└── frontend/
+    ├── Dockerfile
+    ├── nginx.conf
+    └── src/
+        ├── components/                 # ActivityList, ActivityForm, Dashboard...
+        ├── layout/Layout.astro         # Navbar responsiva + Toast + auth guard
+        ├── pages/                      # index, activities, history, settings...
+        └── services/                   # AuthService, ActivityService...
 ```
-
-## ✅ Implemented Features (Phase 0)
-
-- **Project Scaffold**: Astro 4.x frontend + Express backend with TypeScript strict mode
-- **Database Schema**: PostgreSQL with users, activities, completions, daily_progress, aura_history, goals tables
-- **Connection Pool**: pg Pool with environment-based configuration
-- **Domain Entities**: TypeScript interfaces for all core models
-- **Repository Pattern**: PgUserRepository, PgActivityRepository with full CRUD
-- **Auth Providers**: JWT signing/verification, bcrypt password hashing
-- **Frontend Layout**: Responsive dark theme with navigation
-- **Routing**: 4 pages (`/`, `/activities`, `/history`, `/settings`)
-- **State Management**: Nano Stores for user, activity, and progress state
-- **Health Endpoint**: `/health` for monitoring
-
-## 🚧 Upcoming Features (Phase 1+)
-
-### Core Features (MVP)
-- ⬜ **User Authentication**: Register, login, logout with JWT
-- ⬜ **Daily Activity Tracking**: Routine, one-time, and optional activities
-- ⬜ **Activity CRUD**: Create, edit, delete activities
-- ⬜ **Activity Completion**: Toggle complete/skip with daily tracking
-- ⬜ **Progress Visualization**: Real-time 0-100% progress bar
-- ⬜ **Weight System**: Multipliers for difficult days (compassionate scoring)
-- ⬜ **Aura Farming**: Reputation system (+5, +2, -1 per day)
-- ⬜ **Multi-Temporal Goals**: Daily, weekly, monthly targets
-- ⬜ **History**: Filter and browse all past activities
-- ⬜ **Responsive Design**: Mobile (320px) + tablet + desktop optimizations
-- ⬜ **Accessibility**: WCAG AA compliance
-
-## 📊 Technical Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Astro 4.x + TypeScript 5.x |
-| Backend | Express.js + Node.js |
-| Database | PostgreSQL 15+ |
-| Auth | JWT + Refresh Tokens |
-| State (Frontend) | Nano Stores |
-| Data Fetch (Frontend) | TanStack Query |
-| Cache (Optional) | Redis |
-| Testing | Jest + React Testing Library |
-| CI/CD | GitHub Actions |
-| Deployment | Vercel (frontend) + Railway (backend) |
-
-## 🏛️ Architecture Principles
-
-- **Hexagonal/Ports & Adapters**: Business logic isolated from I/O
-- **Dependency Inversion**: Contracts before implementations
-- **No Vendor Lock-in**: Abstractions for LLM, DB, and storage
-- **Islands Architecture**: Minimal JavaScript, only interactive components hydrated
-- **Type-Safe**: TypeScript everywhere
-
-## 🔒 Security
-
-- ✅ HTTPS only
-- ✅ JWT with short expiry (15 min access, 7 day refresh)
-- ✅ Parameterized SQL queries
-- ✅ Rate limiting (10 req/sec per user)
-- ✅ CORS configured
-- ✅ Input validation (Zod)
-- ✅ WCAG AA accessibility
-
-## 📈 Performance
-
-- Frontend load: < 3s
-- Interactions: < 200ms
-- Database queries indexed on (user_id, date)
-- Client-side caching with TanStack Query
-- Server-side caching with Redis (optional)
-- Pagination (50 records/page for history)
-
-## 🧪 Testing
-
-- Unit tests for ProgressCalculator, AuraCalculator
-- Integration tests for API routes
-- Component tests for UI islands
-- E2E test for login → activity → logout flow
-- Target: ≥80% coverage on critical paths
-
-## 🚢 Deployment
-
-**Frontend**: Vercel (auto-deploy on main)
-**Backend**: Railway (auto-deploy on main)
-**Database**: Managed PostgreSQL (Neon, Railway, or similar)
-
-See [.skills/ §9](specify/.skills/.md#9-deployment--devops) for detailed CI/CD setup.
-
-## 📝 Contributing
-
-1. Create feature branch from `main`
-2. Run tests: `npm run test`
-3. Run linter: `npm run lint`
-4. Format code: `npm run format`
-5. Open PR for review
-
-## 📞 Support
-
-For questions or issues, open an issue on GitHub.
-
-## 📄 License
-
-MIT
 
 ---
 
-**Status**: 🟡 Technical Plan Awaiting Approval (see [.skills/](specify/.skills/.md))
-**Last Updated**: May 2026
+## API
 
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| POST | `/auth/register` | Criar conta |
+| POST | `/auth/login` | Login → `{accessToken, refreshToken}` |
+| POST | `/auth/refresh` | Rotacionar refresh token |
+| POST | `/auth/logout` | Invalidar tokens |
+| GET | `/users/me` | Perfil do usuário |
+| PATCH | `/users/me` | Atualizar perfil/multiplicador |
+| GET | `/activities` | Listar atividades do dia |
+| POST | `/activities` | Criar atividade |
+| PUT | `/activities/:id` | Editar atividade |
+| DELETE | `/activities/:id` | Soft-delete |
+| GET | `/completions` | Completions do dia |
+| POST | `/completions` | Marcar como feita/desfeita |
+| GET | `/progress` | Progresso diário + Aura |
+| GET | `/aura` | Total de Aura |
+| GET | `/goals` | Metas + progresso atual |
+| PUT | `/goals` | Atualizar meta |
+| GET | `/history` | Histórico com filtros |
