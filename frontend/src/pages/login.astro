@@ -1,0 +1,17 @@
+---
+import Layout from "../layout/Layout.astro";
+import LoginForm from "../components/LoginForm.astro";
+---
+<Layout title="Entrar — CompassMe" requireAuth={false}>
+  <main style="padding: 2rem 1rem;">
+    <h1 style="text-align:center; margin-bottom: 2rem; color: var(--color-accent);">CompassMe</h1>
+    <LoginForm />
+  </main>
+</Layout>
+
+<script>
+  // Redirect authenticated users away from login page
+  if (localStorage.getItem("access_token")) {
+    window.location.href = "/activities";
+  }
+</script>

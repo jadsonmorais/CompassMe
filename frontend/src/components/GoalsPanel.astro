@@ -1,0 +1,140 @@
+---
+// GoalsPanel — island reutilizável (Dashboard + Settings)
+export interface Props {
+  editable?: boolean;
+}
+const { editable = false } = Astro.props;
+---
+<section id="goals-panel" data-editable={String(editable)}>
+  <h2 class="panel-title">Metas</h2>
+  <div id="goals-list" aria-live="polite">
+    <p class="state-msg">Carregando metas…</p>
+  </div>
+</section>
+
+<script>
+  import { getGoals, updateGoal } from "../services/GoalsService.ts";
+  import type { GoalStatus, GoalPeriod } from "../services/GoalsService.ts";
+
+  const panel = document.getElementById("goals-panel") as HTMLElement;
+  const listEl = document.getElementById("goals-list") as HTMLDivElement;
+  const editable = panel.dataset.editable === "true";
+
+  const periodLabel: Record<GoalPeriod, string> = {
+    DAILY: "Diária",
+    WEEKLY: "Semanal",
+    MONTHLY: "Mensal",
+  };
+
+  async function load(): Promise<void> {
+    try {
+      const goals = await getGoals();
+      render(goals);
+    } catch (err) {
+      listEl.innerHTML = `<p class="state-msg error">Erro: ${(err as Error).message}</p>`;
+    }
+  }
+
+  function render(goals: GoalStatus[]): void {
+    listEl.innerHTML = goals.map((g) => {
+      const pct = Math.min(100, (g.currentPercentage / g.targetPercentage) * 100);
+      const color = g.onTrack ? "#22c55e" : "#f87171";
+      const editHtml = editable
+        ? `<div class="goal-edit">
+             <input
+               type="number" min="0" max="100" step="5"
+               class="target-input"
+               data-period="${g.period}"
+               value="${g.targetPercentage}"
+               aria-label="Meta ${periodLabel[g.period]}"
+             />%
+             <button class="save-btn" data-period="${g.period}">Salvar</button>
+           </div>`
+        : "";
+      return `
+        <div class="goal-row">
+          <div class="goal-header">
+            <span class="goal-label">${periodLabel[g.period]}</span>
+            <span class="goal-values" style="color:${color}">
+              ${g.currentPercentage.toFixed(1)}% / ${g.targetPercentage}%
+            </span>
+          </div>
+          <div class="goal-bar-track">
+            <div class="goal-bar-fill" style="width:${pct}%; background:${color}"></div>
+          </div>
+          <p class="goal-status" style="color:${color}">
+            ${g.onTrack ? "✓ No caminho certo" : "✗ Abaixo da meta"}
+            ${g.daysWithData > 0 ? `· ${g.daysWithData} dia${g.daysWithData > 1 ? "s" : ""} de dados` : "· sem dados ainda"}
+          </p>
+          ${editHtml}
+        </div>`;
+    }).join("");
+
+    if (editable) {
+      listEl.querySelectorAll<HTMLButtonElement>(".save-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const period = btn.dataset.period as GoalPeriod;
+          const input = listEl.querySelector<HTMLInputElement>(
+            `.target-input[data-period="${period}"]`
+          );
+          if (!input) return;
+          const value = parseFloat(input.value);
+          if (isNaN(value) || value < 0 || value > 100) {
+            alert("Valor inválido (0–100)");
+            return;
+          }
+          btn.disabled = true;
+          btn.textContent = "…";
+          try {
+            await updateGoal(period, value);
+            btn.textContent = "✓";
+            setTimeout(() => { btn.disabled = false; btn.textContent = "Salvar"; }, 1500);
+            await load();
+          } catch (err) {
+            alert((err as Error).message);
+            btn.disabled = false;
+            btn.textContent = "Salvar";
+          }
+        });
+      });
+    }
+  }
+
+  load();
+</script>
+
+<style>
+  #goals-panel { margin-top: 1rem; }
+  .panel-title { font-size: 1rem; font-weight: 600; margin-bottom: 0.875rem; }
+</style>
+
+<style is:global>
+  #goals-list .state-msg { color: #64748b; font-size: 0.9375rem; }
+  #goals-list .state-msg.error { color: #f87171; }
+  .goal-row {
+    background: var(--color-surface);
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    padding: 0.875rem 1rem;
+    margin-bottom: 0.625rem;
+  }
+  .goal-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
+  .goal-label { font-size: 0.9375rem; font-weight: 500; }
+  .goal-values { font-size: 0.9375rem; font-weight: 600; }
+  .goal-bar-track { height: 0.5rem; background: #1e293b; border-radius: 9999px; overflow: hidden; margin-bottom: 0.375rem; }
+  .goal-bar-fill { height: 100%; border-radius: 9999px; transition: width 0.4s ease; }
+  .goal-status { font-size: 0.75rem; }
+  .goal-edit { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.625rem; }
+  .target-input {
+    width: 4rem; padding: 0.25rem 0.5rem;
+    background: #0f172a; border: 1px solid #475569;
+    border-radius: 0.375rem; color: var(--color-text); font-size: 0.875rem; text-align: center;
+    min-height: unset;
+  }
+  .save-btn {
+    padding: 0.25rem 0.75rem; min-height: unset; min-width: unset;
+    background: #334155; border: none; border-radius: 0.375rem;
+    color: var(--color-text); cursor: pointer; font-size: 0.8125rem;
+  }
+  .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+</style>

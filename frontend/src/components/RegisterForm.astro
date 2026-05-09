@@ -1,0 +1,98 @@
+---
+// RegisterForm — interactive island
+---
+<div id="register-form-wrapper">
+  <form id="register-form" novalidate>
+    <div class="field">
+      <label for="reg-name">Nome (opcional)</label>
+      <input id="reg-name" type="text" name="displayName" autocomplete="name" />
+    </div>
+    <div class="field">
+      <label for="reg-email">E-mail</label>
+      <input id="reg-email" type="email" name="email" autocomplete="email" required />
+    </div>
+    <div class="field">
+      <label for="reg-password">Senha <span class="hint">(mín. 8 caracteres)</span></label>
+      <input id="reg-password" type="password" name="password" autocomplete="new-password" minlength="8" required />
+    </div>
+    <p id="reg-error" class="error" aria-live="polite"></p>
+    <button type="submit" id="reg-btn">Criar conta</button>
+    <p class="switch">Já tem conta? <a href="/login">Entrar</a></p>
+  </form>
+</div>
+
+<script>
+  import { register, login } from "../services/AuthService.ts";
+  import { setUser } from "../stores/userStore.ts";
+
+  const form = document.getElementById("register-form") as HTMLFormElement;
+  const errorEl = document.getElementById("reg-error") as HTMLParagraphElement;
+  const btn = document.getElementById("reg-btn") as HTMLButtonElement;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorEl.textContent = "";
+    const data = new FormData(form);
+    const email = (data.get("email") as string).trim();
+    const password = data.get("password") as string;
+    const displayName = (data.get("displayName") as string).trim() || undefined;
+
+    if (password.length < 8) {
+      errorEl.textContent = "A senha deve ter pelo menos 8 caracteres";
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Criando…";
+    try {
+      await register(email, password, displayName);
+      // Auto-login after register
+      const user = await login(email, password);
+      setUser(user);
+      window.location.href = "/activities";
+    } catch (err) {
+      errorEl.textContent = (err as Error).message;
+      btn.disabled = false;
+      btn.textContent = "Criar conta";
+    }
+  });
+</script>
+
+<style>
+  #register-form-wrapper {
+    max-width: 400px;
+    margin: 4rem auto;
+    padding: 2rem;
+    background: var(--color-surface);
+    border-radius: 0.75rem;
+    border: 1px solid #334155;
+  }
+  .field { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 1.25rem; }
+  label { font-size: 0.875rem; color: #94a3b8; }
+  .hint { font-size: 0.75rem; color: #64748b; }
+  input {
+    padding: 0.625rem 0.875rem;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    color: var(--color-text);
+    font-size: 1rem;
+  }
+  input:focus { outline: 2px solid var(--color-accent); border-color: transparent; }
+  button[type="submit"] {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--color-accent);
+    color: #0f172a;
+    font-weight: 700;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-size: 1rem;
+    margin-top: 0.5rem;
+  }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .error { color: #f87171; font-size: 0.875rem; margin: 0.5rem 0; min-height: 1.25rem; }
+  .switch { margin-top: 1rem; font-size: 0.875rem; color: #94a3b8; text-align: center; }
+  .switch a { color: var(--color-accent); }
+</style>

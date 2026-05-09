@@ -1,0 +1,186 @@
+---
+// ActivityList — interactive island
+---
+<section id="activity-list-section">
+  <div class="list-header">
+    <h2>Atividades de Hoje</h2>
+    <button id="add-activity-btn" class="btn-primary">+ Nova</button>
+  </div>
+  <div id="activity-list" aria-live="polite">
+    <p class="loading">Carregando…</p>
+  </div>
+</section>
+
+<script>
+  import {
+    listActivities,
+    listCompletions,
+    markCompletion,
+    deleteActivity,
+  } from "../services/ActivityService.ts";
+  import type { Activity, ActivityCompletion } from "../services/ActivityService.ts";
+
+  const listEl = document.getElementById("activity-list") as HTMLDivElement;
+  const addBtn = document.getElementById("add-activity-btn") as HTMLButtonElement;
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  let activities: Activity[] = [];
+  let completions: ActivityCompletion[] = [];
+
+  async function load(): Promise<void> {
+    listEl.innerHTML = '<p class="loading">Carregando…</p>';
+    try {
+      [activities, completions] = await Promise.all([
+        listActivities(today),
+        listCompletions(today),
+      ]);
+      render();
+    } catch (err) {
+      listEl.innerHTML = `<p class="error">Erro ao carregar: ${(err as Error).message}</p>`;
+    }
+  }
+
+  function render(): void {
+    if (activities.length === 0) {
+      listEl.innerHTML = '<p class="empty">Nenhuma atividade. Clique em "+ Nova" para adicionar.</p>';
+      return;
+    }
+    const completionMap = new Map(completions.map((c) => [c.activityId, c]));
+    listEl.innerHTML = activities
+      .map((a) => {
+        const done = completionMap.get(a.id)?.completedAt != null;
+        const typeLabel: Record<string, string> = { ROUTINE: "Rotina", ONE_TIME: "Única", OPTIONAL: "Opcional" };
+        const recurLabel: Record<string, string> = { DAILY: "Diária", MONTHLY: "Mensal" };
+        const dayNames = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+
+        let dateInfo = "";
+        if (a.type === "ROUTINE" && a.recurrence) {
+          if (a.recurrence.startsWith("WEEKLY:")) {
+            const days = a.recurrence.replace("WEEKLY:", "").split(",").map((d) => dayNames[parseInt(d)] ?? d);
+            dateInfo = ` · ${days.join(", ")}`;
+          } else {
+            dateInfo = ` · ${recurLabel[a.recurrence] ?? a.recurrence}`;
+          }
+        } else if (a.type === "ONE_TIME" && a.scheduledDate) {
+          const d = new Date(a.scheduledDate + "T12:00:00");
+          dateInfo = ` · ${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}`;
+        }
+
+        return `
+        <div class="activity-card ${done ? "done" : ""}" data-id="${a.id}">
+          <button class="toggle-btn" data-id="${a.id}" aria-pressed="${done}" aria-label="${done ? "Marcar pendente" : "Marcar como feita"}">
+            <span class="check">${done ? "✓" : ""}</span>
+          </button>
+          <div class="info">
+            <span class="title">${escHtml(a.title)}</span>
+            <span class="meta">${typeLabel[a.type] ?? a.type}${dateInfo} · peso ${a.weight}</span>
+          </div>
+          <div class="card-actions">
+            <button class="edit-btn" data-id="${a.id}" aria-label="Editar">✏️</button>
+            <button class="delete-btn" data-id="${a.id}" aria-label="Excluir">🗑️</button>
+          </div>
+        </div>`;
+      })
+      .join("");
+
+    listEl.querySelectorAll(".toggle-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = (btn as HTMLElement).dataset.id!;
+        const completionMap = new Map(completions.map((c) => [c.activityId, c]));
+        const alreadyDone = completionMap.get(id)?.completedAt != null;
+        try {
+          await markCompletion(id, today, !alreadyDone);
+          await load();
+          window.dispatchEvent(new CustomEvent("progress:refresh"));
+        } catch (err) {
+          alert((err as Error).message);
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".edit-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = (btn as HTMLElement).dataset.id!;
+        const activity = activities.find((a) => a.id === id);
+        const openForm = (window as Window & { openActivityForm?: (a?: Activity) => void }).openActivityForm;
+        if (openForm) openForm(activity);
+      });
+    });
+
+    listEl.querySelectorAll(".delete-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("Excluir esta atividade?")) return;
+        const id = (btn as HTMLElement).dataset.id!;
+        try {
+          await deleteActivity(id);
+          await load();
+        } catch (err) {
+          alert((err as Error).message);
+        }
+      });
+    });
+  }
+
+  function escHtml(str: string): string {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  addBtn.addEventListener("click", () => {
+    const openForm = (window as Window & { openActivityForm?: () => void }).openActivityForm;
+    if (openForm) openForm();
+  });
+
+  window.addEventListener("activities:refresh", () => load());
+
+  load();
+</script>
+
+<style>
+  /* Estilos estáticos (scoped está ok) */
+  #activity-list-section { max-width: 720px; margin: 0 auto; padding: 1.5rem 1rem; }
+  .list-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  h2 { font-size: 1.25rem; }
+  .btn-primary {
+    background: var(--color-accent); color: #0f172a;
+    border: none; border-radius: 0.5rem;
+    padding: 0.5rem 1rem; font-weight: 700; cursor: pointer; font-size: 0.9375rem;
+    min-height: 44px;
+  }
+</style>
+
+<!-- Estilos para HTML gerado dinamicamente via innerHTML precisam de :global() -->
+<style is:global>
+  .activity-card {
+    display: flex; align-items: center; gap: 0.875rem;
+    padding: 0.875rem 1rem;
+    background: var(--color-surface);
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    margin-bottom: 0.5rem;
+    transition: opacity 0.15s;
+  }
+  .activity-card.done { opacity: 0.6; }
+  .toggle-btn {
+    width: 2.75rem; height: 2.75rem; border-radius: 50%;
+    border: 2px solid #475569;
+    background: transparent; cursor: pointer; color: var(--color-accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.9375rem; flex-shrink: 0;
+    min-width: unset; min-height: unset;
+  }
+  .activity-card.done .toggle-btn { background: var(--color-accent); border-color: var(--color-accent); color: #0f172a; }
+  .activity-card .info { flex: 1; display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+  .activity-card .title { font-size: 0.9375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .activity-card .meta { font-size: 0.75rem; color: #64748b; }
+  .card-actions { display: flex; gap: 0.25rem; flex-shrink: 0; }
+  .card-actions button {
+    background: transparent; border: none; cursor: pointer;
+    font-size: 1rem; padding: 0.5rem; width: 44px; height: 44px; min-width: unset; min-height: unset;
+    display: flex; align-items: center; justify-content: center; border-radius: 0.375rem;
+  }
+  .card-actions button:hover { background: #334155; }
+  #activity-list .loading,
+  #activity-list .empty { color: #64748b; font-size: 0.9375rem; padding: 1rem 0; }
+  #activity-list .error { color: #f87171; }
+</style>

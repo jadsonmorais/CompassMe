@@ -1,0 +1,223 @@
+---
+// HistoryView — interactive island
+---
+<section id="history-section">
+  <div class="history-header">
+    <h2>Histórico</h2>
+  </div>
+
+  <!-- Filtros -->
+  <form id="history-filters" class="filters" novalidate>
+    <div class="filter-group">
+      <label for="h-from">De</label>
+      <input id="h-from" type="date" name="from" />
+    </div>
+    <div class="filter-group">
+      <label for="h-to">Até</label>
+      <input id="h-to" type="date" name="to" />
+    </div>
+    <div class="filter-group">
+      <label for="h-type">Tipo</label>
+      <select id="h-type" name="type">
+        <option value="">Todos</option>
+        <option value="ROUTINE">Rotina</option>
+        <option value="ONE_TIME">Única</option>
+        <option value="OPTIONAL">Opcional</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="h-status">Status</label>
+      <select id="h-status" name="status">
+        <option value="">Todos</option>
+        <option value="completed">Concluída</option>
+        <option value="pending">Pendente</option>
+        <option value="skipped">Pulada</option>
+      </select>
+    </div>
+    <button type="submit" class="filter-btn">Filtrar</button>
+  </form>
+
+  <!-- Lista -->
+  <div id="history-list" aria-live="polite">
+    <p class="state-msg">Carregando…</p>
+  </div>
+  <div id="history-footer" class="hidden">
+    <button id="load-more-btn" class="load-more-btn">Carregar mais</button>
+  </div>
+</section>
+
+<script>
+  import { getHistory } from "../services/HistoryService.ts";
+  import type { HistoryEntry, HistoryFilter, ActivityType, CompletionStatus } from "../services/HistoryService.ts";
+
+  const form = document.getElementById("history-filters") as HTMLFormElement;
+  const listEl = document.getElementById("history-list") as HTMLDivElement;
+  const footerEl = document.getElementById("history-footer") as HTMLDivElement;
+  const loadMoreBtn = document.getElementById("load-more-btn") as HTMLButtonElement;
+
+  const LIMIT = 20;
+  let offset = 0;
+  let currentFilter: HistoryFilter = {};
+  let allEntries: HistoryEntry[] = [];
+
+  const typeLabel: Record<string, string> = { ROUTINE: "Rotina", ONE_TIME: "Única", OPTIONAL: "Opcional" };
+  const statusLabel: Record<string, string> = { completed: "✓", pending: "○", skipped: "–" };
+  const statusColor: Record<string, string> = { completed: "#22c55e", pending: "#94a3b8", skipped: "#f59e0b" };
+
+  function buildFilter(): HistoryFilter {
+    const data = new FormData(form);
+    const f: HistoryFilter = { limit: LIMIT };
+    const from = data.get("from") as string;
+    const to = data.get("to") as string;
+    const type = data.get("type") as string;
+    const status = data.get("status") as string;
+    if (from) f.from = from;
+    if (to) f.to = to;
+    if (type) f.type = type as ActivityType;
+    if (status) f.status = status as CompletionStatus;
+    return f;
+  }
+
+  async function load(reset: boolean): Promise<void> {
+    if (reset) {
+      offset = 0;
+      allEntries = [];
+      listEl.innerHTML = '<p class="state-msg">Carregando…</p>';
+    }
+    loadMoreBtn.disabled = true;
+    try {
+      const result = await getHistory({ ...currentFilter, offset, limit: LIMIT });
+      allEntries = [...allEntries, ...result.entries];
+      offset += result.entries.length;
+      renderEntries(reset ? result.entries : allEntries, !reset);
+      footerEl.classList.toggle("hidden", !result.hasMore);
+      loadMoreBtn.disabled = false;
+    } catch (err) {
+      listEl.innerHTML = `<p class="state-msg error">Erro: ${(err as Error).message}</p>`;
+    }
+  }
+
+  function renderEntries(entries: HistoryEntry[], append: boolean): void {
+    if (entries.length === 0 && !append) {
+      listEl.innerHTML = '<p class="state-msg">Nenhum registro encontrado.</p>';
+      return;
+    }
+    const html = entries.map((e) => {
+      const dateStr = new Date(e.date + "T12:00:00").toLocaleDateString("pt-BR", {
+        weekday: "short", day: "numeric", month: "short", year: "numeric",
+      });
+      const pct = e.progressPercentage;
+      const barColor = pct >= 100 ? "#22c55e" : pct >= 50 ? "var(--color-accent)" : "#f59e0b";
+      const actRows = e.activities.map((a) =>
+        `<li class="act-item">
+           <span class="act-status" style="color:${statusColor[a.status]}">${statusLabel[a.status]}</span>
+           <span class="act-title">${escHtml(a.title)}</span>
+           <span class="act-type">${typeLabel[a.type] ?? a.type}</span>
+         </li>`
+      ).join("");
+
+      return `
+        <div class="history-card">
+          <div class="card-header">
+            <span class="card-date">${dateStr}</span>
+            <span class="card-pct" style="color:${barColor}">${pct.toFixed(1)}%</span>
+          </div>
+          <div class="mini-bar">
+            <div class="mini-fill" style="width:${Math.min(100, pct)}%; background:${barColor}"></div>
+          </div>
+          <p class="card-summary">${e.completedCount} de ${e.totalActivities} atividades</p>
+          ${e.activities.length > 0
+            ? `<details class="act-details">
+                 <summary>Ver atividades</summary>
+                 <ul class="act-list">${actRows}</ul>
+               </details>`
+            : ""}
+        </div>`;
+    }).join("");
+
+    if (append) {
+      listEl.insertAdjacentHTML("beforeend", html);
+    } else {
+      listEl.innerHTML = html;
+    }
+  }
+
+  function escHtml(str: string): string {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    currentFilter = buildFilter();
+    load(true);
+  });
+
+  loadMoreBtn.addEventListener("click", () => load(false));
+
+  // Inicializa com os últimos 30 dias
+  const today = new Date();
+  const thirtyAgo = new Date(today);
+  thirtyAgo.setDate(today.getDate() - 30);
+  (form.elements.namedItem("from") as HTMLInputElement).value = thirtyAgo.toISOString().slice(0, 10);
+  (form.elements.namedItem("to") as HTMLInputElement).value = today.toISOString().slice(0, 10);
+  currentFilter = buildFilter();
+  load(true);
+</script>
+
+<style>
+  /* Estáticos — scoped ok */
+  #history-section { max-width: 720px; margin: 0 auto; padding: 1.5rem 1rem; }
+  .history-header { margin-bottom: 1rem; }
+  h2 { font-size: 1.25rem; }
+  .filters {
+    display: flex; flex-wrap: wrap; gap: 0.625rem; align-items: flex-end;
+    background: var(--color-surface); border: 1px solid #334155;
+    border-radius: 0.5rem; padding: 0.875rem 1rem; margin-bottom: 1rem;
+  }
+  .filter-group { display: flex; flex-direction: column; gap: 0.25rem; }
+  label { font-size: 0.75rem; color: #64748b; }
+  input[type="date"], select {
+    padding: 0.375rem 0.5rem; min-height: unset;
+    background: #0f172a; border: 1px solid #334155;
+    border-radius: 0.375rem; color: var(--color-text); font-size: 0.875rem;
+  }
+  .filter-btn {
+    padding: 0.4375rem 1rem; background: var(--color-accent); min-height: unset; min-width: unset;
+    color: #0f172a; font-weight: 700; border: none;
+    border-radius: 0.375rem; cursor: pointer; font-size: 0.875rem; align-self: flex-end;
+  }
+  .hidden { display: none !important; }
+  .load-more-btn {
+    width: 100%; padding: 0.625rem; margin-top: 0.5rem; min-height: unset; min-width: unset;
+    background: #1e293b; border: 1px solid #334155;
+    border-radius: 0.5rem; color: #94a3b8; cursor: pointer; font-size: 0.9375rem;
+  }
+  .load-more-btn:hover { border-color: var(--color-accent); color: var(--color-text); }
+  .load-more-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  @media (max-width: 560px) {
+    .filters { flex-direction: column; }
+    .filter-btn { width: 100%; }
+  }
+</style>
+
+<style is:global>
+  /* Dinâmicos via innerHTML — precisam de :global */
+  #history-list .state-msg { color: #64748b; padding: 1rem 0; font-size: 0.9375rem; }
+  #history-list .state-msg.error { color: #f87171; }
+  .history-card {
+    background: var(--color-surface); border: 1px solid #334155;
+    border-radius: 0.5rem; padding: 0.875rem 1rem; margin-bottom: 0.625rem;
+  }
+  .history-card .card-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.375rem; }
+  .history-card .card-date { font-size: 0.9375rem; font-weight: 500; }
+  .history-card .card-pct { font-size: 1rem; font-weight: 700; }
+  .history-card .mini-bar { height: 4px; background: #1e293b; border-radius: 9999px; overflow: hidden; margin-bottom: 0.375rem; }
+  .history-card .mini-fill { height: 100%; border-radius: 9999px; transition: width 0.3s; }
+  .history-card .card-summary { font-size: 0.8125rem; color: #64748b; margin-bottom: 0.375rem; }
+  .act-details summary { font-size: 0.8125rem; color: #94a3b8; cursor: pointer; user-select: none; }
+  .act-list { list-style: none; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem; }
+  .act-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; }
+  .act-status { font-weight: 700; width: 1rem; text-align: center; flex-shrink: 0; }
+  .act-title { flex: 1; }
+  .act-type { font-size: 0.75rem; color: #64748b; }
+</style>

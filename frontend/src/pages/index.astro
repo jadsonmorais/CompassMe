@@ -1,0 +1,42 @@
+---
+import Layout from "../layout/Layout.astro";
+import Dashboard from "../components/Dashboard.astro";
+import GoalsPanel from "../components/GoalsPanel.astro";
+---
+<Layout title="Dashboard — CompassMe">
+  <main style="padding: 1.5rem 1rem;">
+    <Dashboard />
+    <div style="max-width: 720px; margin: 0 auto; padding: 0 1rem;">
+      <GoalsPanel editable={false} />
+    </div>
+    <nav class="quick-nav">
+      <a href="/activities">📋 Atividades</a>
+      <a href="/history">📈 Histórico</a>
+      <a href="/settings">⚙️ Configurações</a>
+    </nav>
+  </main>
+</Layout>
+
+<style>
+  .quick-nav {
+    max-width: 720px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    padding: 0 1rem;
+  }
+  .quick-nav a {
+    background: var(--color-surface);
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    padding: 0.875rem;
+    text-decoration: none;
+    color: #94a3b8;
+    font-size: 0.9375rem;
+    text-align: center;
+    transition: border-color 0.15s;
+  }
+  .quick-nav a:hover { border-color: var(--color-accent); color: var(--color-text); }
+  @media (max-width: 480px) { .quick-nav { grid-template-columns: 1fr; } }
+</style>

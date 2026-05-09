@@ -1,0 +1,281 @@
+---
+// ActivityForm — interactive island (create/edit modal)
+---
+<div id="activity-form-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="form-title">
+  <div class="modal">
+    <h2 id="form-title">Nova Atividade</h2>
+    <form id="activity-form" novalidate>
+      <input type="hidden" id="activity-id" />
+
+      <div class="field">
+        <label for="act-title">Título *</label>
+        <input id="act-title" name="title" type="text" required maxlength="255" />
+      </div>
+
+      <div class="field">
+        <label for="act-desc">Descrição</label>
+        <textarea id="act-desc" name="description" rows="2" maxlength="1000"></textarea>
+      </div>
+
+      <div class="field">
+        <label for="act-type">Tipo *</label>
+        <select id="act-type" name="type">
+          <option value="ROUTINE">Rotina</option>
+          <option value="ONE_TIME">Única</option>
+          <option value="OPTIONAL">Opcional</option>
+        </select>
+      </div>
+
+      <!-- Recorrência — só para ROUTINE -->
+      <div class="field" id="field-recurrence">
+        <label for="act-recurrence">Recorrência</label>
+        <select id="act-recurrence" name="recurrence">
+          <option value="DAILY">Diária</option>
+          <option value="WEEKLY">Semanal</option>
+          <option value="MONTHLY">Mensal</option>
+        </select>
+      </div>
+
+      <!-- Dias da semana — só para ROUTINE + WEEKLY -->
+      <div class="field hidden" id="field-weekdays">
+        <label>Dias da semana *</label>
+        <div class="weekday-grid" role="group" aria-label="Dias da semana">
+          <label class="day-option"><input type="checkbox" name="weekday" value="0" /><span>Dom</span></label>
+          <label class="day-option"><input type="checkbox" name="weekday" value="1" /><span>Seg</span></label>
+          <label class="day-option"><input type="checkbox" name="weekday" value="2" /><span>Ter</span></label>
+          <label class="day-option"><input type="checkbox" name="weekday" value="3" /><span>Qua</span></label>
+          <label class="day-option"><input type="checkbox" name="weekday" value="4" /><span>Qui</span></label>
+          <label class="day-option"><input type="checkbox" name="weekday" value="5" /><span>Sex</span></label>
+          <label class="day-option"><input type="checkbox" name="weekday" value="6" /><span>Sáb</span></label>
+        </div>
+        <p id="weekday-error" class="error" style="margin:0"></p>
+      </div>
+
+      <!-- Data prevista — só para ONE_TIME -->
+      <div class="field hidden" id="field-scheduled-date">
+        <label for="act-scheduled-date">Data prevista *</label>
+        <input id="act-scheduled-date" name="scheduledDate" type="date" />
+      </div>
+
+      <div class="field">
+        <label for="act-weight">Peso (0.1–5.0)</label>
+        <input id="act-weight" name="weight" type="number" min="0.1" max="5.0" step="0.1" value="1.0" />
+      </div>
+
+      <p id="form-error" class="error" aria-live="polite"></p>
+      <div class="actions">
+        <button type="button" id="form-cancel">Cancelar</button>
+        <button type="submit" id="form-submit">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  import { createActivity, updateActivity } from "../services/ActivityService.ts";
+  import type { Activity } from "../services/ActivityService.ts";
+
+  const overlay      = document.getElementById("activity-form-overlay") as HTMLDivElement;
+  const form         = document.getElementById("activity-form") as HTMLFormElement;
+  const titleEl      = document.getElementById("form-title") as HTMLHeadingElement;
+  const idInput      = document.getElementById("activity-id") as HTMLInputElement;
+  const errorEl      = document.getElementById("form-error") as HTMLParagraphElement;
+  const cancelBtn    = document.getElementById("form-cancel") as HTMLButtonElement;
+  const submitBtn    = document.getElementById("form-submit") as HTMLButtonElement;
+  const typeSelect    = document.getElementById("act-type") as HTMLSelectElement;
+  const recurSelect   = document.getElementById("act-recurrence") as HTMLSelectElement;
+  const fieldRecur    = document.getElementById("field-recurrence") as HTMLDivElement;
+  const fieldDate     = document.getElementById("field-scheduled-date") as HTMLDivElement;
+  const fieldWeekdays = document.getElementById("field-weekdays") as HTMLDivElement;
+  const weekdayError  = document.getElementById("weekday-error") as HTMLParagraphElement;
+  const dateInput     = document.getElementById("act-scheduled-date") as HTMLInputElement;
+
+  function updateFieldVisibility(type: string, recur?: string): void {
+    const r = recur ?? recurSelect.value;
+    fieldRecur.classList.toggle("hidden", type !== "ROUTINE");
+    fieldDate.classList.toggle("hidden", type !== "ONE_TIME");
+    fieldWeekdays.classList.toggle("hidden", type !== "ROUTINE" || r !== "WEEKLY");
+    dateInput.required = type === "ONE_TIME";
+  }
+
+  typeSelect.addEventListener("change", () => updateFieldVisibility(typeSelect.value));
+  recurSelect.addEventListener("change", () => updateFieldVisibility(typeSelect.value));
+  updateFieldVisibility(typeSelect.value);
+
+  cancelBtn.addEventListener("click", () => closeForm());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeForm(); });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorEl.textContent = "";
+    const data = new FormData(form);
+    const type = data.get("type") as Activity["type"];
+    const title = (data.get("title") as string).trim();
+
+    if (!title) { errorEl.textContent = "Título é obrigatório"; return; }
+    if (type === "ONE_TIME" && !data.get("scheduledDate")) {
+      errorEl.textContent = "Data prevista é obrigatória para atividades únicas"; return;
+    }
+
+    const recurrenceValue = data.get("recurrence") as string;
+    if (type === "ROUTINE" && recurrenceValue === "WEEKLY") {
+      const days = data.getAll("weekday") as string[];
+      if (days.length === 0) {
+        weekdayError.textContent = "Selecione pelo menos um dia da semana";
+        return;
+      }
+      weekdayError.textContent = "";
+    }
+
+    const payload: Partial<Activity> & Pick<Activity, "title" | "type"> = {
+      title,
+      type,
+      description: (data.get("description") as string).trim() || undefined,
+      weight: parseFloat(data.get("weight") as string) || 1.0,
+    };
+
+    if (type === "ROUTINE") {
+      const recur = data.get("recurrence") as string;
+      if (recur === "WEEKLY") {
+        const days = (data.getAll("weekday") as string[]).sort().join(",");
+        payload.recurrence = `WEEKLY:${days}`;
+      } else {
+        payload.recurrence = recur;
+      }
+      payload.scheduledDate = null;
+    } else if (type === "ONE_TIME") {
+      payload.scheduledDate = data.get("scheduledDate") as string;
+      payload.recurrence = null;
+    } else {
+      payload.recurrence = null;
+      payload.scheduledDate = null;
+    }
+
+    submitBtn.disabled = true;
+    try {
+      const editId = idInput.value;
+      if (editId) {
+        await updateActivity(editId, payload);
+      } else {
+        await createActivity(payload);
+      }
+      closeForm();
+      window.dispatchEvent(new CustomEvent("activities:refresh"));
+    } catch (err) {
+      errorEl.textContent = (err as Error).message;
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  function closeForm(): void {
+    overlay.classList.add("hidden");
+    form.reset();
+    idInput.value = "";
+    weekdayError.textContent = "";
+    form.querySelectorAll<HTMLInputElement>('input[name="weekday"]').forEach((cb) => { cb.checked = false; });
+    updateFieldVisibility("ROUTINE");
+  }
+
+  (window as Window & { openActivityForm?: (activity?: Activity) => void }).openActivityForm = (activity?: Activity) => {
+    form.reset();
+    idInput.value = "";
+    errorEl.textContent = "";
+
+    if (activity) {
+      titleEl.textContent = "Editar Atividade";
+      idInput.value = activity.id;
+      (form.elements.namedItem("title") as HTMLInputElement).value = activity.title;
+      (form.elements.namedItem("description") as HTMLTextAreaElement).value = activity.description ?? "";
+      (form.elements.namedItem("type") as HTMLSelectElement).value = activity.type;
+      (form.elements.namedItem("weight") as HTMLInputElement).value = String(activity.weight);
+
+      if (activity.type === "ROUTINE") {
+        const recur = activity.recurrence ?? "DAILY";
+        if (recur.startsWith("WEEKLY:")) {
+          (form.elements.namedItem("recurrence") as HTMLSelectElement).value = "WEEKLY";
+          const days = recur.replace("WEEKLY:", "").split(",");
+          form.querySelectorAll<HTMLInputElement>('input[name="weekday"]').forEach((cb) => {
+            cb.checked = days.includes(cb.value);
+          });
+        } else {
+          (form.elements.namedItem("recurrence") as HTMLSelectElement).value = recur;
+        }
+      } else if (activity.type === "ONE_TIME" && activity.scheduledDate) {
+        (form.elements.namedItem("scheduledDate") as HTMLInputElement).value =
+          activity.scheduledDate.slice(0, 10);
+      }
+    } else {
+      titleEl.textContent = "Nova Atividade";
+      // Pré-seleciona hoje para ONE_TIME
+      const today = new Date().toISOString().slice(0, 10);
+      (form.elements.namedItem("scheduledDate") as HTMLInputElement).value = today;
+    }
+
+    updateFieldVisibility(activity?.type ?? "ROUTINE");
+    overlay.classList.remove("hidden");
+    (form.elements.namedItem("title") as HTMLInputElement).focus();
+  };
+</script>
+
+<style>
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; padding: 1rem;
+  }
+  .overlay.hidden { display: none; }
+  .modal {
+    background: var(--color-surface);
+    border: 1px solid #334155;
+    border-radius: 0.75rem;
+    padding: 1.75rem;
+    width: 100%; max-width: 440px;
+    max-height: 90vh; overflow-y: auto;
+  }
+  h2 { margin-bottom: 1.25rem; font-size: 1.125rem; }
+  .field { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 1rem; }
+  .field.hidden { display: none; }
+  label { font-size: 0.875rem; color: #94a3b8; }
+  input, textarea, select {
+    padding: 0.5rem 0.75rem; min-height: unset;
+    background: #0f172a; border: 1px solid #334155;
+    border-radius: 0.375rem; color: var(--color-text);
+    font-size: 0.9375rem; font-family: inherit;
+  }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--color-accent); border-color: transparent; }
+  .error { color: #f87171; font-size: 0.875rem; min-height: 1.25rem; margin: 0.25rem 0; }
+  .actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1rem; }
+  .actions button {
+    padding: 0.5rem 1.25rem; border-radius: 0.375rem;
+    cursor: pointer; font-size: 0.9375rem; border: none;
+    min-height: unset; min-width: unset;
+  }
+  #form-cancel { background: #334155; color: var(--color-text); }
+  #form-submit { background: var(--color-accent); color: #0f172a; font-weight: 700; }
+  #form-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .weekday-grid {
+    display: flex; gap: 0.375rem; flex-wrap: wrap;
+  }
+  .day-option { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+  .day-option input[type="checkbox"] { position: absolute; opacity: 0; width: 0; height: 0; }
+  .day-option span {
+    display: flex; align-items: center; justify-content: center;
+    width: 2.5rem; height: 2.5rem;
+    background: #0f172a; border: 2px solid #334155; border-radius: 50%;
+    font-size: 0.75rem; font-weight: 600; cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    user-select: none;
+  }
+  .day-option input:checked + span {
+    border-color: var(--color-accent);
+    background: #0c2333;
+    color: var(--color-accent);
+  }
+  .day-option input:focus-visible + span {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+</style>

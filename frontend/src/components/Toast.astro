@@ -1,0 +1,79 @@
+---
+// Toast — componente global de notificações, incluído no Layout
+---
+<div id="toast-container" aria-live="assertive" aria-atomic="true"></div>
+
+<script>
+  export type ToastType = "success" | "error" | "info";
+
+  function showToast(message: string, type: ToastType = "info", durationMs = 4000): void {
+    const container = document.getElementById("toast-container");
+    if (!container) return;
+
+    const toast = document.createElement("div");
+    toast.className = `toast toast-${type}`;
+    toast.setAttribute("role", "alert");
+    toast.textContent = message;
+
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add("toast-visible"));
+
+    setTimeout(() => {
+      toast.classList.remove("toast-visible");
+      toast.addEventListener("transitionend", () => toast.remove(), { once: true });
+    }, durationMs);
+  }
+
+  // API global
+  (window as Window & { toast?: typeof showToast }).toast = showToast;
+
+  // Intercept 401 global: redireciona para /login
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = async (...args) => {
+    const res = await _origFetch(...args);
+    if (res.status === 401) {
+      const url = typeof args[0] === "string" ? args[0] : (args[0] as Request).url;
+      // Não redireciona nas rotas de auth
+      if (!url.includes("/auth/")) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        window.location.href = "/login";
+      }
+    }
+    return res;
+  };
+</script>
+
+<style>
+  #toast-container {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    z-index: 9999;
+    pointer-events: none;
+  }
+
+  .toast {
+    padding: 0.75rem 1.125rem;
+    border-radius: 0.5rem;
+    font-size: 0.9375rem;
+    max-width: 22rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    opacity: 0;
+    transform: translateY(0.5rem);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    pointer-events: auto;
+  }
+  .toast-visible { opacity: 1; transform: translateY(0); }
+  .toast-success { background: #14532d; border: 1px solid #22c55e; color: #bbf7d0; }
+  .toast-error   { background: #450a0a; border: 1px solid #ef4444; color: #fecaca; }
+  .toast-info    { background: #0c2333; border: 1px solid var(--color-accent); color: #bae6fd; }
+
+  @media (max-width: 480px) {
+    #toast-container { left: 1rem; right: 1rem; bottom: 1rem; }
+    .toast { max-width: 100%; }
+  }
+</style>

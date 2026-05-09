@@ -1,0 +1,155 @@
+---
+import Layout from "../layout/Layout.astro";
+import GoalsPanel from "../components/GoalsPanel.astro";
+import ActivityList from "../components/ActivityList.astro";
+import ActivityForm from "../components/ActivityForm.astro";
+---
+<Layout title="Configurações — CompassMe">
+  <main style="padding: 1.5rem 1rem;">
+    <div id="settings-root" style="max-width: 640px; margin: 0 auto;">
+      <h1 style="margin-bottom: 1.5rem; font-size: 1.375rem;">Configurações</h1>
+
+      <!-- Atividades -->
+      <section class="settings-card">
+        <ActivityList />
+        <ActivityForm />
+      </section>
+
+      <!-- Multiplicador diário -->
+      <section class="settings-card">
+        <h2>Multiplicador Diário</h2>
+        <p class="hint">Dias difíceis merecem mais reconhecimento. O multiplicador amplifica os ganhos de Aura quando você completa tarefas.</p>
+        <div class="multiplier-options" role="group" aria-label="Selecionar multiplicador diário">
+          <label class="mult-option">
+            <input type="radio" name="multiplier" value="1.0" />
+            <span class="mult-card">
+              <span class="mult-value">1×</span>
+              <span class="mult-name">Normal</span>
+            </span>
+          </label>
+          <label class="mult-option">
+            <input type="radio" name="multiplier" value="1.5" />
+            <span class="mult-card">
+              <span class="mult-value">1.5×</span>
+              <span class="mult-name">Dia Difícil</span>
+            </span>
+          </label>
+          <label class="mult-option">
+            <input type="radio" name="multiplier" value="2.0" />
+            <span class="mult-card">
+              <span class="mult-value">2×</span>
+              <span class="mult-name">Desafio</span>
+            </span>
+          </label>
+        </div>
+        <p id="mult-feedback" class="feedback" aria-live="polite"></p>
+      </section>
+
+      <!-- Metas -->
+      <section class="settings-card">
+        <GoalsPanel editable={true} />
+      </section>
+
+      <!-- Conta -->
+      <section class="settings-card">
+        <h2>Conta</h2>
+        <div id="user-info" class="user-info-row">
+          <span id="user-email" style="color: #94a3b8; font-size: 0.9375rem;">Carregando…</span>
+          <button id="logout-settings-btn" class="logout-btn">Sair da conta</button>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</Layout>
+
+<script>
+  import { getMe, updateMultiplier } from "../services/ProgressService.ts";
+  import { logout } from "../services/AuthService.ts";
+
+  const feedbackEl = document.getElementById("mult-feedback") as HTMLParagraphElement;
+  const userEmailEl = document.getElementById("user-email") as HTMLSpanElement;
+  const radios = document.querySelectorAll<HTMLInputElement>('input[name="multiplier"]');
+  const logoutBtn = document.getElementById("logout-settings-btn") as HTMLButtonElement;
+
+  async function init(): Promise<void> {
+    try {
+      const user = await getMe();
+      userEmailEl.innerHTML = `<strong style="color:var(--color-text)">${user.email}</strong>${user.displayName ? ` <span style="color:#64748b">— ${user.displayName}</span>` : ""}`;
+      const current = String(user.dailyMultiplier ?? 1.0);
+      localStorage.setItem("daily_multiplier", current);
+      radios.forEach((r) => {
+        if (r.value === current) r.checked = true;
+        r.addEventListener("change", () => handleMultiplierChange(parseFloat(r.value)));
+      });
+    } catch {
+      userEmailEl.textContent = "Erro ao carregar perfil.";
+    }
+  }
+
+  async function handleMultiplierChange(value: number): Promise<void> {
+    feedbackEl.style.color = "#94a3b8";
+    feedbackEl.textContent = "Salvando…";
+    try {
+      await updateMultiplier(value);
+      localStorage.setItem("daily_multiplier", String(value));
+      feedbackEl.style.color = "#22c55e";
+      feedbackEl.textContent = `Multiplicador ${value}× salvo!`;
+      window.dispatchEvent(new CustomEvent("progress:refresh"));
+      setTimeout(() => { feedbackEl.textContent = ""; }, 3000);
+    } catch (err) {
+      feedbackEl.style.color = "#f87171";
+      feedbackEl.textContent = (err as Error).message;
+    }
+  }
+
+  logoutBtn.addEventListener("click", async () => {
+    logoutBtn.disabled = true;
+    logoutBtn.textContent = "Saindo…";
+    await logout();
+    window.location.href = "/login";
+  });
+
+  init();
+</script>
+
+<style>
+  .settings-card {
+    background: var(--color-surface);
+    border: 1px solid #334155;
+    border-radius: 0.75rem;
+    padding: 1.375rem 1.5rem;
+    margin-bottom: 1rem;
+  }
+  h2 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; }
+  .hint { font-size: 0.8125rem; color: #64748b; margin-bottom: 1rem; }
+
+  .multiplier-options { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .mult-option input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
+  .mult-card {
+    display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+    padding: 0.875rem 1.25rem; min-width: 5rem;
+    background: #0f172a; border: 2px solid #334155; border-radius: 0.5rem;
+    cursor: pointer; transition: border-color 0.15s, background 0.15s; user-select: none;
+  }
+  .mult-option input:checked + .mult-card { border-color: var(--color-accent); background: #0c2333; }
+  .mult-option input:focus-visible + .mult-card { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  .mult-value { font-size: 1.375rem; font-weight: 700; color: var(--color-accent); }
+  .mult-name { font-size: 0.75rem; color: #94a3b8; }
+  .feedback { font-size: 0.875rem; min-height: 1.25rem; margin-top: 0.75rem; }
+
+  .user-info-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .logout-btn {
+    padding: 0.5rem 1rem; min-height: 44px;
+    background: transparent; border: 1px solid #ef4444;
+    color: #ef4444; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem;
+    transition: background 0.15s;
+  }
+  .logout-btn:hover { background: rgba(239,68,68,0.1); }
+  .logout-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  @media (max-width: 480px) {
+    .multiplier-options { flex-direction: column; }
+    .mult-card { flex-direction: row; justify-content: flex-start; gap: 0.75rem; width: 100%; }
+  }
+</style>

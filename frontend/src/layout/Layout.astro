@@ -1,0 +1,243 @@
+---
+import Toast from "../components/Toast.astro";
+
+export interface Props {
+  title: string;
+  requireAuth?: boolean;
+}
+const { title, requireAuth = true } = Astro.props;
+const requireAuthStr = String(requireAuth);
+---
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <style is:global>
+      :root {
+        --color-bg: #0f172a;
+        --color-text: #f8fafc;
+        --color-accent: #38bdf8;
+        --color-surface: #1e293b;
+        --nav-height: 56px;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        background: var(--color-bg);
+        color: var(--color-text);
+        min-height: 100vh;
+        line-height: 1.5;
+      }
+      :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+      button, a, [role="button"] { min-height: 44px; min-width: 44px; }
+    </style>
+  </head>
+  <body data-require-auth={requireAuthStr}>
+
+    <nav class="navbar">
+      <div class="nav-inner">
+        <!-- Logo -->
+        <a href="/" class="nav-logo">CompassMe</a>
+
+        <!-- Links desktop -->
+        <div class="nav-links" id="nav-links" role="navigation" aria-label="Menu principal">
+          <a href="/" class="nav-link">Dashboard</a>
+          <a href="/activities" class="nav-link">Atividades</a>
+          <a href="/history" class="nav-link">Histórico</a>
+          <a href="/settings" class="nav-link">Configurações</a>
+          <button id="logout-btn" class="nav-logout hidden" aria-label="Sair da conta">Sair</button>
+        </div>
+
+        <!-- Hamburger mobile -->
+        <button
+          id="nav-toggle"
+          class="nav-toggle"
+          aria-label="Abrir menu"
+          aria-expanded="false"
+          aria-controls="nav-links"
+        >
+          <span class="bar"></span>
+          <span class="bar"></span>
+          <span class="bar"></span>
+        </button>
+      </div>
+    </nav>
+
+    <slot />
+    <Toast />
+
+  </body>
+</html>
+
+<style>
+  .navbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--color-surface);
+    border-bottom: 1px solid #334155;
+  }
+  .nav-inner {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 1.25rem;
+    height: var(--nav-height);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .nav-logo {
+    font-weight: 700;
+    font-size: 1.125rem;
+    color: var(--color-accent);
+    text-decoration: none;
+    white-space: nowrap;
+    min-height: unset;
+    min-width: unset;
+  }
+
+  /* Desktop links */
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .nav-link {
+    color: #94a3b8;
+    text-decoration: none;
+    font-size: 0.9375rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    min-height: unset;
+    min-width: unset;
+    transition: color 0.15s, background 0.15s;
+    white-space: nowrap;
+  }
+  .nav-link:hover { color: var(--color-text); background: #334155; }
+  .nav-logout {
+    background: transparent;
+    border: 1px solid #475569;
+    color: #94a3b8;
+    padding: 0.375rem 0.875rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    min-height: unset;
+    min-width: unset;
+    margin-left: 0.5rem;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .nav-logout:hover { border-color: var(--color-accent); color: var(--color-text); }
+  .nav-logout.hidden { display: none; }
+
+  /* Hamburger */
+  .nav-toggle {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    width: 44px;
+    height: 44px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+    min-height: unset;
+    min-width: unset;
+    border-radius: 0.375rem;
+  }
+  .nav-toggle:hover { background: #334155; }
+  .bar {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: #94a3b8;
+    border-radius: 2px;
+    transition: transform 0.2s, opacity 0.2s;
+  }
+  /* Hamburger → X */
+  .nav-toggle[aria-expanded="true"] .bar:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+  .nav-toggle[aria-expanded="true"] .bar:nth-child(2) { opacity: 0; }
+  .nav-toggle[aria-expanded="true"] .bar:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+  /* Mobile */
+  @media (max-width: 600px) {
+    .nav-toggle { display: flex; }
+
+    .nav-links {
+      display: none;
+      position: absolute;
+      top: var(--nav-height);
+      left: 0; right: 0;
+      flex-direction: column;
+      align-items: stretch;
+      background: var(--color-surface);
+      border-bottom: 1px solid #334155;
+      padding: 0.5rem 1rem 1rem;
+      gap: 0.25rem;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .nav-links.open { display: flex; }
+    .nav-link {
+      font-size: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 0.5rem;
+    }
+    .nav-logout {
+      margin-left: 0;
+      margin-top: 0.5rem;
+      padding: 0.75rem 1rem;
+      text-align: left;
+    }
+  }
+</style>
+
+<script>
+  import { logout } from "../services/AuthService.ts";
+
+  const token = localStorage.getItem("access_token");
+  const requireAuth = document.body.dataset.requireAuth === "true";
+
+  if (requireAuth && !token) {
+    window.location.href = "/login";
+  }
+
+  // Logout
+  const logoutBtn = document.getElementById("logout-btn") as HTMLButtonElement;
+  if (logoutBtn && token) {
+    logoutBtn.classList.remove("hidden");
+    logoutBtn.addEventListener("click", async () => {
+      await logout();
+      window.location.href = "/login";
+    });
+  }
+
+  // Hamburger
+  const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
+  const links  = document.getElementById("nav-links") as HTMLDivElement;
+
+  toggle.addEventListener("click", () => {
+    const open = links.classList.toggle("open");
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute("aria-label", open ? "Fechar menu" : "Abrir menu");
+  });
+
+  // Fecha ao clicar em qualquer link
+  links.querySelectorAll("a").forEach((a) => {
+    a.addEventListener("click", () => {
+      links.classList.remove("open");
+      toggle.setAttribute("aria-expanded", "false");
+    });
+  });
+
+  // Fecha ao clicar fora
+  document.addEventListener("click", (e) => {
+    if (!toggle.contains(e.target as Node) && !links.contains(e.target as Node)) {
+      links.classList.remove("open");
+      toggle.setAttribute("aria-expanded", "false");
+    }
+  });
+</script>

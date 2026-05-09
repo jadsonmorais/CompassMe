@@ -1,0 +1,23 @@
+{
+  "name": "compassme-frontend",
+  "version": "1.0.0",
+  "description": "CompassMe Frontend — Astro 4.x + TypeScript",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.0",
+    "@nanostores/persistent": "^1.3.4",
+    "astro": "^4.16.0",
+    "nanostores": "^1.3.0",
+    "typescript": "^5.5.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10"
+  }
+}

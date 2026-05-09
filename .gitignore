@@ -1,0 +1,24 @@
+# Dependências
+node_modules/
+**/node_modules/
+
+# Build
+dist/
+**/dist/
+.astro/
+
+# Ambiente
+.env
+**/.env
+*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# SO
+.DS_Store
+Thumbs.db
+
+# Docker volumes (não versionar dados locais)
+pg_data/
