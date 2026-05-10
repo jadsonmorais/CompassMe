@@ -1,0 +1,203 @@
+---
+// ActivityManager — gerenciamento completo de atividades (sem filtro de data)
+---
+<section id="activity-manager-section">
+  <div class="mgr-header">
+    <h2>Gerenciar Atividades</h2>
+    <button id="mgr-add-btn" class="btn-primary" aria-label="Nova atividade">+ Nova</button>
+  </div>
+
+  <!-- Filtros -->
+  <div class="mgr-filters">
+    <button class="filter-tab active" data-filter="all">Todas</button>
+    <button class="filter-tab" data-filter="ROUTINE">Rotina</button>
+    <button class="filter-tab" data-filter="ONE_TIME">Única</button>
+    <button class="filter-tab" data-filter="OPTIONAL">Opcional</button>
+  </div>
+
+  <div id="mgr-list" aria-live="polite">
+    <p class="mgr-state">Carregando…</p>
+  </div>
+</section>
+
+<style is:global>
+  .mgr-activity-card {
+    background: var(--color-surface);
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    padding: 0.875rem 1rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+  }
+  .mgr-type-badge {
+    padding: 0.2rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .badge-routine  { background: #0c2333; color: #38bdf8; border: 1px solid #38bdf8; }
+  .badge-one_time { background: #1a1033; color: #a78bfa; border: 1px solid #a78bfa; }
+  .badge-optional { background: #1a2e05; color: #86efac; border: 1px solid #86efac; }
+  .mgr-info { flex: 1; display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+  .mgr-title { font-size: 0.9375rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mgr-meta { font-size: 0.75rem; color: #64748b; }
+  .mgr-desc { font-size: 0.8125rem; color: #94a3b8; margin-top: 0.125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mgr-actions { display: flex; gap: 0.25rem; flex-shrink: 0; }
+  .mgr-actions button {
+    background: transparent; border: none; cursor: pointer;
+    font-size: 1rem; width: 36px; height: 36px; min-width: unset; min-height: unset;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 0.375rem; color: #64748b;
+    transition: background 0.15s, color 0.15s;
+  }
+  .mgr-actions button:hover { background: #334155; color: var(--color-text); }
+  .mgr-actions .del-btn:hover { background: rgba(239,68,68,0.15); color: #f87171; }
+</style>
+
+<style>
+  #activity-manager-section { width: 100%; }
+  .mgr-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.875rem;
+  }
+  h2 { font-size: 1rem; font-weight: 600; }
+  .btn-primary {
+    background: var(--color-accent); color: #0f172a;
+    border: none; border-radius: 0.5rem;
+    padding: 0.375rem 0.875rem; font-weight: 700;
+    cursor: pointer; font-size: 0.875rem;
+    min-height: unset; min-width: unset;
+  }
+  .mgr-filters {
+    display: flex; gap: 0.375rem; margin-bottom: 0.875rem; flex-wrap: wrap;
+  }
+  .filter-tab {
+    padding: 0.25rem 0.75rem; min-height: unset; min-width: unset;
+    background: #1e293b; border: 1px solid #334155;
+    border-radius: 9999px; color: #94a3b8;
+    cursor: pointer; font-size: 0.8125rem;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .filter-tab.active { border-color: var(--color-accent); color: var(--color-accent); }
+  .mgr-state { color: #64748b; font-size: 0.9375rem; padding: 0.75rem 0; }
+</style>
+
+<script>
+  import { listAllActivities, deleteActivity } from "../services/ActivityService.ts";
+  import type { Activity } from "../services/ActivityService.ts";
+
+  const listEl   = document.getElementById("mgr-list") as HTMLDivElement;
+  const addBtn   = document.getElementById("mgr-add-btn") as HTMLButtonElement;
+  const filterBtns = document.querySelectorAll<HTMLButtonElement>(".filter-tab");
+
+  const typeLabel: Record<string, string> = { ROUTINE: "Rotina", ONE_TIME: "Única", OPTIONAL: "Opcional" };
+  const recurLabel: Record<string, string> = { DAILY: "Diária", MONTHLY: "Mensal" };
+  const dayNames = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+
+  let allActivities: Activity[] = [];
+  let activeFilter = "all";
+
+  function metaText(a: Activity): string {
+    const parts: string[] = [];
+    if (a.type === "ROUTINE" && a.recurrence) {
+      if (a.recurrence.startsWith("WEEKLY:")) {
+        const days = a.recurrence.replace("WEEKLY:", "").split(",").map((d) => dayNames[parseInt(d)] ?? d);
+        parts.push(`Semanal · ${days.join(", ")}`);
+      } else {
+        parts.push(recurLabel[a.recurrence] ?? a.recurrence);
+      }
+    } else if (a.type === "ONE_TIME" && a.scheduledDate) {
+      const d = new Date(a.scheduledDate + "T12:00:00");
+      parts.push(d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }));
+    }
+    parts.push(`Peso ${a.weight}`);
+    return parts.join(" · ");
+  }
+
+  function badgeClass(type: string): string {
+    return { ROUTINE: "badge-routine", ONE_TIME: "badge-one_time", OPTIONAL: "badge-optional" }[type] ?? "";
+  }
+
+  function escHtml(str: string): string {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function render(): void {
+    const filtered = activeFilter === "all"
+      ? allActivities
+      : allActivities.filter((a) => a.type === activeFilter);
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = `<p class="mgr-state">${activeFilter === "all" ? "Nenhuma atividade cadastrada." : "Nenhuma atividade deste tipo."}</p>`;
+      return;
+    }
+
+    listEl.innerHTML = filtered.map((a) => `
+      <div class="mgr-activity-card" data-id="${a.id}">
+        <span class="mgr-type-badge ${badgeClass(a.type)}">${typeLabel[a.type] ?? a.type}</span>
+        <div class="mgr-info">
+          <span class="mgr-title">${escHtml(a.title)}</span>
+          <span class="mgr-meta">${escHtml(metaText(a))}</span>
+          ${a.description ? `<span class="mgr-desc">${escHtml(a.description)}</span>` : ""}
+        </div>
+        <div class="mgr-actions">
+          <button class="edit-btn" data-id="${a.id}" aria-label="Editar ${escHtml(a.title)}">✏️</button>
+          <button class="del-btn" data-id="${a.id}" aria-label="Excluir ${escHtml(a.title)}">🗑️</button>
+        </div>
+      </div>`).join("");
+
+    listEl.querySelectorAll<HTMLButtonElement>(".edit-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const activity = allActivities.find((a) => a.id === btn.dataset.id);
+        const openForm = (window as Window & { openActivityForm?: (a?: Activity) => void }).openActivityForm;
+        if (openForm) openForm(activity);
+      });
+    });
+
+    listEl.querySelectorAll<HTMLButtonElement>(".del-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const activity = allActivities.find((a) => a.id === btn.dataset.id);
+        if (!activity) return;
+        if (!confirm(`Excluir "${activity.title}"?`)) return;
+        try {
+          await deleteActivity(btn.dataset.id!);
+          await load();
+          window.dispatchEvent(new CustomEvent("activities:refresh"));
+        } catch (err) {
+          alert((err as Error).message);
+        }
+      });
+    });
+  }
+
+  async function load(): Promise<void> {
+    listEl.innerHTML = '<p class="mgr-state">Carregando…</p>';
+    try {
+      allActivities = await listAllActivities();
+      render();
+    } catch (err) {
+      listEl.innerHTML = `<p class="mgr-state" style="color:#f87171">Erro: ${(err as Error).message}</p>`;
+    }
+  }
+
+  filterBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      filterBtns.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeFilter = btn.dataset.filter!;
+      render();
+    });
+  });
+
+  addBtn.addEventListener("click", () => {
+    const openForm = (window as Window & { openActivityForm?: () => void }).openActivityForm;
+    if (openForm) openForm();
+  });
+
+  window.addEventListener("activities:refresh", () => load());
+  load();
+</script>

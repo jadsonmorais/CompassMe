@@ -35,6 +35,17 @@ export function createActivitiesRouter(
     }
   });
 
+  // Lista todas as atividades sem filtro de data (para gerenciamento)
+  router.get("/all", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = (req as AuthenticatedRequest).userId;
+      const activities = await activityRepo.findByUserId(userId);
+      res.json({ activities });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = (req as AuthenticatedRequest).userId;

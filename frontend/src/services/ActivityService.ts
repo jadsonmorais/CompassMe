@@ -50,6 +50,12 @@ export async function listActivities(date?: string): Promise<Activity[]> {
   return data.activities;
 }
 
+export async function listAllActivities(): Promise<Activity[]> {
+  const res = await fetch(`${API}/activities/all`, { headers: authHeaders() });
+  const data = await handleResponse<{ activities: Activity[] }>(res);
+  return data.activities;
+}
+
 export async function createActivity(
   input: Pick<Activity, "title" | "type"> & Partial<Pick<Activity, "description" | "weight" | "recurrence" | "scheduledDate" | "deadlineTime">>
 ): Promise<Activity> {
