@@ -57,7 +57,8 @@
   const auraTodayEl = document.getElementById("aura-today") as HTMLSpanElement;
   const auraReasonEl = document.getElementById("aura-reason") as HTMLSpanElement;
 
-  const today = new Date().toISOString().slice(0, 10);
+  import { localDateStr } from "../services/dateUtils.ts";
+  const today = localDateStr();
   const reasonLabels: Record<string, string> = {
     all_completed: "Tudo concluído!",
     partial: "Progresso parcial",

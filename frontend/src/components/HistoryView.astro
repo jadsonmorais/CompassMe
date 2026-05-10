@@ -155,11 +155,10 @@
   loadMoreBtn.addEventListener("click", () => load(false));
 
   // Inicializa com os últimos 30 dias
+  import { localDateStr, localDateAdd } from "../services/dateUtils.ts";
   const today = new Date();
-  const thirtyAgo = new Date(today);
-  thirtyAgo.setDate(today.getDate() - 30);
-  (form.elements.namedItem("from") as HTMLInputElement).value = thirtyAgo.toISOString().slice(0, 10);
-  (form.elements.namedItem("to") as HTMLInputElement).value = today.toISOString().slice(0, 10);
+  (form.elements.namedItem("from") as HTMLInputElement).value = localDateAdd(today, -30);
+  (form.elements.namedItem("to") as HTMLInputElement).value = localDateStr();
   currentFilter = buildFilter();
   load(true);
 </script>

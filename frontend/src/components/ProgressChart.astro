@@ -40,6 +40,7 @@
 <script>
   import { getChartData } from "../services/HistoryService.ts";
   import type { ChartPoint } from "../services/HistoryService.ts";
+  import { localDateStr, localDateAdd } from "../services/dateUtils.ts";
 
   const chartLoading = document.getElementById("chart-loading") as HTMLDivElement;
   const chartWrapper = document.getElementById("chart-wrapper") as HTMLDivElement;
@@ -64,15 +65,11 @@
     dayDetail.classList.add("hidden");
 
     const today = new Date();
-    const from  = new Date(today);
-    from.setDate(today.getDate() - days + 1);
-    const ahead = new Date(today);
-    ahead.setDate(today.getDate() + 7);
 
     try {
       const result = await getChartData(
-        from.toISOString().slice(0, 10),
-        ahead.toISOString().slice(0, 10)
+        localDateAdd(today, -(days - 1)),
+        localDateAdd(today, 7)
       );
       points = result;
       chartLoading.classList.add("hidden");
@@ -96,9 +93,7 @@
     const today = new Date();
     const allDays: string[] = [];
     for (let i = days - 1; i >= -7; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      allDays.push(d.toISOString().slice(0, 10));
+      allDays.push(localDateAdd(today, -i));
     }
 
     const innerW = W - PAD.left - PAD.right;
@@ -129,7 +124,7 @@
       svg.appendChild(label);
     });
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = localDateStr();
 
     // Separa pontos passados e futuros
     const pastPoints = allDays

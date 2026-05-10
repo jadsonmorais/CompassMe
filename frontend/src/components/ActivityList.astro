@@ -23,7 +23,8 @@
   const listEl = document.getElementById("activity-list") as HTMLDivElement;
   const addBtn = document.getElementById("add-activity-btn") as HTMLButtonElement;
 
-  const today = new Date().toISOString().slice(0, 10);
+  import { localDateStr } from "../services/dateUtils.ts";
+  const today = localDateStr();
 
   let activities: Activity[] = [];
   let completions: ActivityCompletion[] = [];
