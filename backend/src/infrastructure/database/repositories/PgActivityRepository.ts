@@ -35,8 +35,11 @@ export class PgActivityRepository implements IActivityRepository {
     const params: unknown[] = [userId];
 
     if (date) {
+      const dateStr = date.toISOString().slice(0, 10);
+      // Só retorna atividades que existiam naquela data (criadas até o fim do dia)
+      query += " AND created_at::date <= $2";
       query += " AND (scheduled_date IS NULL OR scheduled_date <= $2)";
-      params.push(date);
+      params.push(dateStr);
     }
 
     query += " ORDER BY created_at DESC";

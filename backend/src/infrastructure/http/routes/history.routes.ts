@@ -64,9 +64,11 @@ export function createHistoryRouter(
       const today = new Date();
       const fourteenAgo = new Date(today);
       fourteenAgo.setDate(today.getDate() - 13);
+      const sevenAhead = new Date(today);
+      sevenAhead.setDate(today.getDate() + 7);
 
       const from = req.query.from ? new Date(req.query.from as string) : fourteenAgo;
-      const to   = req.query.to   ? new Date(req.query.to as string)   : today;
+      const to   = req.query.to   ? new Date(req.query.to as string)   : sevenAhead;
 
       const useCase = new GetChartDataUseCase(activityRepo, completionRepo);
       const points  = await useCase.execute(userId, from, to);

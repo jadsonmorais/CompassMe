@@ -10,6 +10,10 @@
       <button class="range-btn" data-days="60">60d</button>
     </div>
   </div>
+  <div class="legend">
+    <span class="leg-past">— Realizado</span>
+    <span class="leg-future">- - Projeção</span>
+  </div>
 
   <div id="chart-loading" class="state-msg">Carregando…</div>
 
@@ -58,11 +62,13 @@
     const today = new Date();
     const from  = new Date(today);
     from.setDate(today.getDate() - days + 1);
+    const ahead = new Date(today);
+    ahead.setDate(today.getDate() + 7);
 
     try {
       const result = await getChartData(
         from.toISOString().slice(0, 10),
-        today.toISOString().slice(0, 10)
+        ahead.toISOString().slice(0, 10)
       );
       points = result;
       chartLoading.classList.add("hidden");
@@ -82,10 +88,10 @@
 
     const pointMap = new Map(points.map((p) => [p.date, p]));
 
-    // Gera todos os dias do período
+    // Gera todos os dias: passado (days) + futuro (7d)
     const today = new Date();
     const allDays: string[] = [];
-    for (let i = days - 1; i >= 0; i--) {
+    for (let i = days - 1; i >= -7; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
       allDays.push(d.toISOString().slice(0, 10));
@@ -119,28 +125,43 @@
       svg.appendChild(label);
     });
 
-    // Linha de progresso (apenas dias com atividades)
-    const dataPoints = allDays
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    // Separa pontos passados e futuros
+    const pastPoints = allDays
       .map((date, i) => {
         const p = pointMap.get(date);
-        if (!p?.hasData) return null;
+        if (!p?.hasData || p.isFuture) return null;
         return { x: PAD.left + i * xStep, y: PAD.top + innerH - (p.progressPercentage / 100) * innerH, point: p };
       })
       .filter(Boolean) as { x: number; y: number; point: ChartPoint }[];
 
-    if (dataPoints.length >= 2) {
-      // Área preenchida
-      let areaPath = `M ${dataPoints[0].x} ${PAD.top + innerH}`;
-      dataPoints.forEach((p) => { areaPath += ` L ${p.x} ${p.y}`; });
-      areaPath += ` L ${dataPoints[dataPoints.length - 1].x} ${PAD.top + innerH} Z`;
+    // Ponto de hoje (âncora para a linha de projeção)
+    const todayIdx = allDays.indexOf(todayStr);
+    const todayPt = pointMap.get(todayStr);
+    const futurePoints = allDays
+      .map((date, i) => {
+        const p = pointMap.get(date);
+        if (!p?.hasData || !p.isFuture) return null;
+        return { x: PAD.left + i * xStep, y: PAD.top + innerH, point: p }; // 0% no eixo
+      })
+      .filter(Boolean) as { x: number; y: number; point: ChartPoint }[];
+
+    // Área passada
+    if (pastPoints.length >= 2) {
+      let areaPath = `M ${pastPoints[0].x} ${PAD.top + innerH}`;
+      pastPoints.forEach((p) => { areaPath += ` L ${p.x} ${p.y}`; });
+      areaPath += ` L ${pastPoints[pastPoints.length - 1].x} ${PAD.top + innerH} Z`;
       const area = document.createElementNS(ns, "path");
       area.setAttribute("d", areaPath);
       area.setAttribute("fill", "rgba(56,189,248,0.08)");
       svg.appendChild(area);
+    }
 
-      // Linha
-      let linePath = `M ${dataPoints[0].x} ${dataPoints[0].y}`;
-      dataPoints.slice(1).forEach((p) => { linePath += ` L ${p.x} ${p.y}`; });
+    // Linha sólida — passado
+    if (pastPoints.length >= 2) {
+      let linePath = `M ${pastPoints[0].x} ${pastPoints[0].y}`;
+      pastPoints.slice(1).forEach((p) => { linePath += ` L ${p.x} ${p.y}`; });
       const line = document.createElementNS(ns, "path");
       line.setAttribute("d", linePath);
       line.setAttribute("stroke", "#38bdf8");
@@ -148,6 +169,46 @@
       line.setAttribute("fill", "none");
       line.setAttribute("stroke-linejoin", "round");
       svg.appendChild(line);
+    }
+
+    // Linha pontilhada — projeção futura (parte de hoje ou último ponto passado)
+    if (futurePoints.length > 0) {
+      const anchorPt = pastPoints[pastPoints.length - 1] ??
+        (todayIdx >= 0 && todayPt ? { x: PAD.left + todayIdx * xStep, y: PAD.top + innerH } : null);
+      if (anchorPt) {
+        const allFuture = [anchorPt, ...futurePoints];
+        let dashPath = `M ${allFuture[0].x} ${allFuture[0].y}`;
+        allFuture.slice(1).forEach((p) => { dashPath += ` L ${p.x} ${p.y}`; });
+        const dash = document.createElementNS(ns, "path");
+        dash.setAttribute("d", dashPath);
+        dash.setAttribute("stroke", "#64748b");
+        dash.setAttribute("stroke-width", "2");
+        dash.setAttribute("stroke-dasharray", "5,4");
+        dash.setAttribute("fill", "none");
+        svg.appendChild(dash);
+      }
+    }
+
+    // Linha vertical "hoje"
+    if (todayIdx >= 0) {
+      const x = PAD.left + todayIdx * xStep;
+      const vline = document.createElementNS(ns, "line");
+      vline.setAttribute("x1", String(x));
+      vline.setAttribute("x2", String(x));
+      vline.setAttribute("y1", String(PAD.top));
+      vline.setAttribute("y2", String(PAD.top + innerH));
+      vline.setAttribute("stroke", "#475569");
+      vline.setAttribute("stroke-width", "1");
+      vline.setAttribute("stroke-dasharray", "3,3");
+      svg.appendChild(vline);
+      const todayLbl = document.createElementNS(ns, "text");
+      todayLbl.setAttribute("x", String(x));
+      todayLbl.setAttribute("y", String(PAD.top - 4));
+      todayLbl.setAttribute("text-anchor", "middle");
+      todayLbl.setAttribute("fill", "#64748b");
+      todayLbl.setAttribute("font-size", "9");
+      todayLbl.textContent = "hoje";
+      svg.appendChild(todayLbl);
     }
 
     // Pontos + labels de data
@@ -171,8 +232,10 @@
       const pt = pointMap.get(date);
       if (!pt?.hasData) return;
 
-      const y = PAD.top + innerH - (pt.progressPercentage / 100) * innerH;
-      const color = pt.progressPercentage >= 100 ? "#22c55e"
+      const yPct = pt.isFuture ? 0 : pt.progressPercentage;
+      const y = PAD.top + innerH - (yPct / 100) * innerH;
+      const color = pt.isFuture ? "#475569"
+        : pt.progressPercentage >= 100 ? "#22c55e"
         : pt.progressPercentage >= 50 ? "#38bdf8"
         : "#f59e0b";
 
@@ -181,8 +244,8 @@
       circle.setAttribute("cx", String(x));
       circle.setAttribute("cy", String(y));
       circle.setAttribute("r", "5");
-      circle.setAttribute("fill", color);
-      circle.setAttribute("stroke", "#0f172a");
+      circle.setAttribute("fill", pt.isFuture ? "#0f172a" : color);
+      circle.setAttribute("stroke", color);
       circle.setAttribute("stroke-width", "2");
       circle.setAttribute("cursor", "pointer");
       circle.setAttribute("tabindex", "0");
@@ -192,11 +255,16 @@
       const showDetail = (): void => {
         const d = new Date(date + "T12:00:00");
         detailDate.textContent = d.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
-        detailPct.textContent  = `${pt.progressPercentage.toFixed(1)}% · ${pt.completedCount}/${pt.totalActivities} atividades`;
+        if (pt.isFuture) {
+          detailPct.textContent = `${pt.totalActivities} atividade${pt.totalActivities !== 1 ? "s" : ""} prevista${pt.totalActivities !== 1 ? "s" : ""}`;
+          detailEmpty.textContent = "Projeção — nenhuma conclusão registrada ainda.";
+        } else {
+          detailPct.textContent = `${pt.progressPercentage.toFixed(1)}% · ${pt.completedCount}/${pt.totalActivities} atividades`;
+          detailEmpty.textContent = "Detalhes completos no Histórico abaixo.";
+        }
         detailPct.style.color  = color;
         detailList.innerHTML   = "";
         detailEmpty.classList.remove("hidden");
-        detailEmpty.textContent = "Clique nos pontos para ver detalhes. Os detalhes completos estão no Histórico abaixo.";
 
         dayDetail.classList.remove("hidden");
       };
@@ -245,6 +313,12 @@
     transition: border-color 0.15s, color 0.15s;
   }
   .range-btn.active { border-color: var(--color-accent); color: var(--color-accent); }
+
+  .legend {
+    display: flex; gap: 1rem; font-size: 0.75rem; margin-top: 0.5rem; color: #64748b;
+  }
+  .leg-past { color: #38bdf8; }
+  .leg-future { color: #475569; }
 
   .state-msg { color: #64748b; padding: 1rem 0; font-size: 0.9375rem; }
   .hidden { display: none !important; }

@@ -42,6 +42,7 @@ export interface ChartPoint {
   completedCount: number;
   totalActivities: number;
   hasData: boolean;
+  isFuture: boolean;
 }
 
 function authHeaders(): HeadersInit {
