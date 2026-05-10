@@ -255,16 +255,28 @@
       const showDetail = (): void => {
         const d = new Date(date + "T12:00:00");
         detailDate.textContent = d.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+        const typeLabel: Record<string, string> = { ROUTINE: "Rotina", ONE_TIME: "Única", OPTIONAL: "Opcional" };
+
         if (pt.isFuture) {
           detailPct.textContent = `${pt.totalActivities} atividade${pt.totalActivities !== 1 ? "s" : ""} prevista${pt.totalActivities !== 1 ? "s" : ""}`;
-          detailEmpty.textContent = "Projeção — nenhuma conclusão registrada ainda.";
         } else {
-          detailPct.textContent = `${pt.progressPercentage.toFixed(1)}% · ${pt.completedCount}/${pt.totalActivities} atividades`;
-          detailEmpty.textContent = "Detalhes completos no Histórico abaixo.";
+          detailPct.textContent = `${pt.progressPercentage.toFixed(1)}% · ${pt.completedCount}/${pt.totalActivities}`;
         }
-        detailPct.style.color  = color;
-        detailList.innerHTML   = "";
-        detailEmpty.classList.remove("hidden");
+        detailPct.style.color = color;
+
+        if (pt.activities.length === 0) {
+          detailList.innerHTML = "";
+          detailEmpty.textContent = pt.isFuture ? "Nenhuma atividade prevista." : "Sem atividades neste dia.";
+          detailEmpty.classList.remove("hidden");
+        } else {
+          detailEmpty.classList.add("hidden");
+          detailList.innerHTML = pt.activities.map((a) => `
+            <li class="detail-item">
+              <span class="detail-bullet" style="color:${pt.isFuture ? "#475569" : color}">○</span>
+              <span class="detail-title">${escHtml(a.title)}</span>
+              <span class="detail-type">${typeLabel[a.type] ?? a.type}</span>
+            </li>`).join("");
+        }
 
         dayDetail.classList.remove("hidden");
       };
@@ -273,6 +285,10 @@
       circle.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") showDetail(); });
       svg.appendChild(circle);
     });
+  }
+
+  function escHtml(str: string): string {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   detailClose.addEventListener("click", () => dayDetail.classList.add("hidden"));
@@ -352,7 +368,8 @@
   }
   .detail-list { list-style: none; display: flex; flex-direction: column; gap: 0.375rem; }
   .detail-item { display: flex; align-items: center; gap: 0.625rem; font-size: 0.875rem; }
-  .detail-status { font-weight: 700; width: 1rem; text-align: center; flex-shrink: 0; }
+  .detail-status,
+  .detail-bullet { font-weight: 700; width: 1rem; text-align: center; flex-shrink: 0; }
   .detail-title { flex: 1; }
   .detail-type { font-size: 0.75rem; color: #64748b; }
 </style>

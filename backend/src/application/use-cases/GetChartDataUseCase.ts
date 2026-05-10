@@ -2,13 +2,20 @@ import { ProgressCalculator } from "../services/ProgressCalculator.js";
 import type { IActivityRepository } from "../../ports/IActivityRepository.js";
 import type { ICompletionRepository } from "../../ports/ICompletionRepository.js";
 
+export interface ChartActivity {
+  id: string;
+  title: string;
+  type: string;
+}
+
 export interface ChartPoint {
   date: string;
   progressPercentage: number;
   completedCount: number;
   totalActivities: number;
   hasData: boolean;
-  isFuture: boolean;    // projeção — sem completions reais
+  isFuture: boolean;
+  activities: ChartActivity[];
 }
 
 export class GetChartDataUseCase {
@@ -41,19 +48,24 @@ export class GetChartDataUseCase {
         continue;
       }
 
+      const activityList: ChartActivity[] = activities.map((a) => ({
+        id: a.id,
+        title: a.title,
+        type: a.type,
+      }));
+
       if (isFuture) {
-        // Projeção: mostra total de atividades previstas mas sem completions
         const result = this.calc.calculate(activities, []);
         points.push({
           date: dateStr,
-          progressPercentage: 0,          // ainda não completou nada
+          progressPercentage: 0,
           completedCount: 0,
           totalActivities: result.totalActivities,
           hasData: true,
           isFuture: true,
+          activities: activityList,
         });
       } else {
-        // Passado/hoje: calcula com completions reais
         const completions = await this.completionRepo.findByUserAndDate(userId, date);
         const result = this.calc.calculate(activities, completions);
         points.push({
@@ -63,6 +75,7 @@ export class GetChartDataUseCase {
           totalActivities: result.totalActivities,
           hasData: true,
           isFuture: false,
+          activities: activityList,
         });
       }
 

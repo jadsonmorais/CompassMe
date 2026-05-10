@@ -36,6 +36,12 @@ export interface HistoryFilter {
   limit?: number;
 }
 
+export interface ChartActivity {
+  id: string;
+  title: string;
+  type: string;
+}
+
 export interface ChartPoint {
   date: string;
   progressPercentage: number;
@@ -43,6 +49,7 @@ export interface ChartPoint {
   totalActivities: number;
   hasData: boolean;
   isFuture: boolean;
+  activities: ChartActivity[];
 }
 
 function authHeaders(): HeadersInit {
