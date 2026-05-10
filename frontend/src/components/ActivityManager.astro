@@ -111,7 +111,8 @@
         parts.push(recurLabel[a.recurrence] ?? a.recurrence);
       }
     } else if (a.type === "ONE_TIME" && a.scheduledDate) {
-      const d = new Date(a.scheduledDate + "T12:00:00");
+      const dateStr = String(a.scheduledDate).slice(0, 10);
+      const d = new Date(dateStr + "T12:00:00");
       parts.push(d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }));
     }
     parts.push(`Peso ${a.weight}`);
