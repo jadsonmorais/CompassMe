@@ -12,7 +12,11 @@
   </div>
   <div class="legend">
     <span class="leg-past">— Realizado</span>
-    <span class="leg-future">- - Projeção</span>
+    <span class="leg-future">- - Projeção:</span>
+    <span class="leg-routine">● Rotina</span>
+    <span class="leg-onetime">● Única</span>
+    <span class="leg-optional">● Opcional</span>
+    <span class="leg-mixed">● Misto</span>
   </div>
 
   <div id="chart-loading" class="state-msg">Carregando…</div>
@@ -234,23 +238,55 @@
 
       const yPct = pt.isFuture ? 0 : pt.progressPercentage;
       const y = PAD.top + innerH - (yPct / 100) * innerH;
-      const color = pt.isFuture ? "#475569"
-        : pt.progressPercentage >= 100 ? "#22c55e"
-        : pt.progressPercentage >= 50 ? "#38bdf8"
-        : "#f59e0b";
 
-      // Ponto clicável
+      // Cor do ponto: passado por progresso, futuro por tipo dominante
+      const typeColors: Record<string, string> = {
+        ROUTINE: "#38bdf8",
+        ONE_TIME: "#a78bfa",
+        OPTIONAL: "#86efac",
+      };
+      let color: string;
+      if (pt.isFuture) {
+        const types = pt.activities.map((a) => a.type);
+        const unique = [...new Set(types)];
+        color = unique.length === 1 ? (typeColors[unique[0]] ?? "#64748b") : "#f59e0b";
+      } else {
+        color = pt.progressPercentage >= 100 ? "#22c55e"
+          : pt.progressPercentage >= 50 ? "#38bdf8"
+          : "#f59e0b";
+      }
+
+      // Raio maior para pontos futuros (cabe o número)
+      const r = pt.isFuture ? 11 : 5;
+
       const circle = document.createElementNS(ns, "circle");
       circle.setAttribute("cx", String(x));
       circle.setAttribute("cy", String(y));
-      circle.setAttribute("r", "5");
-      circle.setAttribute("fill", pt.isFuture ? "#0f172a" : color);
+      circle.setAttribute("r", String(r));
+      circle.setAttribute("fill", pt.isFuture ? "#1e293b" : color);
       circle.setAttribute("stroke", color);
       circle.setAttribute("stroke-width", "2");
       circle.setAttribute("cursor", "pointer");
       circle.setAttribute("tabindex", "0");
       circle.setAttribute("role", "button");
-      circle.setAttribute("aria-label", `${date}: ${pt.progressPercentage.toFixed(1)}%`);
+      circle.setAttribute("aria-label", pt.isFuture
+        ? `${date}: ${pt.totalActivities} atividades previstas`
+        : `${date}: ${pt.progressPercentage.toFixed(1)}%`);
+      svg.appendChild(circle);
+
+      // Número de atividades dentro do ponto futuro
+      if (pt.isFuture && pt.totalActivities > 0) {
+        const txt = document.createElementNS(ns, "text");
+        txt.setAttribute("x", String(x));
+        txt.setAttribute("y", String(y + 4));
+        txt.setAttribute("text-anchor", "middle");
+        txt.setAttribute("fill", color);
+        txt.setAttribute("font-size", "9");
+        txt.setAttribute("font-weight", "700");
+        txt.setAttribute("pointer-events", "none");
+        txt.textContent = String(pt.totalActivities);
+        svg.appendChild(txt);
+      }
 
       const showDetail = (): void => {
         const d = new Date(date + "T12:00:00");
@@ -270,12 +306,15 @@
           detailEmpty.classList.remove("hidden");
         } else {
           detailEmpty.classList.add("hidden");
-          detailList.innerHTML = pt.activities.map((a) => `
+          detailList.innerHTML = pt.activities.map((a) => {
+            const aColor = pt.isFuture ? (typeColors[a.type] ?? "#64748b") : color;
+            return `
             <li class="detail-item">
-              <span class="detail-bullet" style="color:${pt.isFuture ? "#475569" : color}">○</span>
+              <span class="detail-bullet" style="color:${aColor}">●</span>
               <span class="detail-title">${escHtml(a.title)}</span>
-              <span class="detail-type">${typeLabel[a.type] ?? a.type}</span>
-            </li>`).join("");
+              <span class="detail-type" style="color:${aColor}">${typeLabel[a.type] ?? a.type}</span>
+            </li>`;
+          }).join("");
         }
 
         dayDetail.classList.remove("hidden");
@@ -283,7 +322,10 @@
 
       circle.addEventListener("click", showDetail);
       circle.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") showDetail(); });
-      svg.appendChild(circle);
+      if (pt.isFuture) {
+        // O texto não captura eventos — garante que o círculo responde
+        svg.lastElementChild?.addEventListener("click", showDetail);
+      }
     });
   }
 
@@ -333,8 +375,12 @@
   .legend {
     display: flex; gap: 1rem; font-size: 0.75rem; margin-top: 0.5rem; color: #64748b;
   }
-  .leg-past { color: #38bdf8; }
-  .leg-future { color: #475569; }
+  .leg-past    { color: #38bdf8; }
+  .leg-future  { color: #64748b; }
+  .leg-routine { color: #38bdf8; }
+  .leg-onetime { color: #a78bfa; }
+  .leg-optional{ color: #86efac; }
+  .leg-mixed   { color: #f59e0b; }
 
   .state-msg { color: #64748b; padding: 1rem 0; font-size: 0.9375rem; }
   .hidden { display: none !important; }
