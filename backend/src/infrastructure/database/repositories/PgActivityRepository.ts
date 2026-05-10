@@ -36,9 +36,11 @@ export class PgActivityRepository implements IActivityRepository {
 
     if (date) {
       const dateStr = date.toISOString().slice(0, 10);
-      // Só retorna atividades que existiam naquela data (criadas até o fim do dia)
+      // Atividades criadas até aquela data
       query += " AND created_at::date <= $2";
-      query += " AND (scheduled_date IS NULL OR scheduled_date <= $2)";
+      // ROUTINE/OPTIONAL: sem data específica (scheduled_date IS NULL)
+      // ONE_TIME: apenas na data exata agendada
+      query += " AND (type != 'ONE_TIME' OR scheduled_date = $2)";
       params.push(dateStr);
     }
 
